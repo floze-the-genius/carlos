@@ -219,8 +219,9 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
                 .hasMessageContaining("document database failed");
 
         Path file = createdFile.get();
-        assertThat(file).isNotNull();
-        assertThat(file).doesNotExist();
+        assertThat(file)
+                .isNotNull()
+                .doesNotExist();
         verify(outboundEmailArchiveDao, never()).persist(any(OutboundEmailArchive.class));
     }
 

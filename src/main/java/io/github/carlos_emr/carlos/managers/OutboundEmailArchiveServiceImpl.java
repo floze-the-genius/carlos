@@ -53,6 +53,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -75,7 +76,11 @@ import java.util.UUID;
 public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveService {
 
     private static final HexFormat HEX_FORMAT = HexFormat.of();
+    private static final String AUDIT_ARCHIVE_ID_PREFIX = "archiveId=";
+    private static final String AUDIT_ARCHIVE_LABEL = "Outbound email archive";
+    private static final String AUDIT_DOCUMENT_NO_PREFIX = " documentNo=";
     private static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
+    private static final String DOCUMENT_DIR_PROPERTY = "DOCUMENT_DIR";
     private static final String DOCUMENT_DOCTYPE = "email";
     private static final String DOCUMENT_SOURCE = "Outbound Email Archive";
     private static final String CTL_DOCUMENT_MODULE_DEMOGRAPHIC = "demographic";
@@ -218,8 +223,9 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
 
         registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.archive",
-                "Outbound email archive",
-                "archiveId=" + archive.getId() + " emailLogId=" + emailLog.getId() + " documentNo=" + savedDocument.getId(),
+                AUDIT_ARCHIVE_LABEL,
+                AUDIT_ARCHIVE_ID_PREFIX + archive.getId() + " emailLogId=" + emailLog.getId()
+                        + AUDIT_DOCUMENT_NO_PREFIX + savedDocument.getId(),
                 String.valueOf(demographicNo),
                 ""));
 
@@ -230,11 +236,11 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     @Transactional(readOnly = true)
     public OutboundEmailArchive getActiveArchive(LoggedInInfo loggedInInfo, Integer archiveId) {
         OutboundEmailArchive archive = loadActiveArchiveForRead(loggedInInfo, archiveId);
-        String auditDetails = "archiveId=" + archive.getId() + " documentNo=" + documentId(archive);
+        String auditDetails = AUDIT_ARCHIVE_ID_PREFIX + archive.getId() + AUDIT_DOCUMENT_NO_PREFIX + documentId(archive);
         String auditDemographicNo = demographicNo(archive);
         registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.getActiveArchive",
-                "Outbound email archive",
+                AUDIT_ARCHIVE_LABEL,
                 auditDetails,
                 auditDemographicNo,
                 ""));
@@ -242,10 +248,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     @Override
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    @SuppressFBWarnings(
-            value = "PATH_TRAVERSAL_IN",
-            justification = "Archive eDoc reads validate the generated filename as a single path component and revalidate DOCUMENT_DIR containment before reading.")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED, noRollbackFor = IOException.class)
     public byte[] readArchivedArtifact(LoggedInInfo loggedInInfo, Integer archiveId) throws IOException {
         OutboundEmailArchive archive = loadActiveArchiveForRead(loggedInInfo, archiveId);
         Document document = archive.getDocument();
@@ -256,8 +259,8 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         if (expectedByteSize == null) {
             throw new IllegalStateException("Outbound email archive byte size is required");
         }
-        String expectedSha256Hash = normalizeSha256Hex(archive.getSha256Hash(), "Outbound email archive SHA-256 hash");
-        String auditDetails = "archiveId=" + archive.getId() + " documentNo=" + document.getId();
+        String expectedSha256Hash = normalizeSha256Hex(archive.getSha256Hash(), AUDIT_ARCHIVE_LABEL + " SHA-256 hash");
+        String auditDetails = AUDIT_ARCHIVE_ID_PREFIX + archive.getId() + AUDIT_DOCUMENT_NO_PREFIX + document.getId();
         String auditDemographicNo = demographicNo(archive);
 
         Path archivePath = resolveArchivedArtifactPath(document.getDocfilename());
@@ -265,7 +268,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         validateArchiveHash(expectedSha256Hash, artifactBytes);
         LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.readArchivedArtifact",
-                "Outbound email archive",
+                AUDIT_ARCHIVE_LABEL,
                 auditDetails,
                 auditDemographicNo,
                 "");
@@ -302,7 +305,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.recordControlledDeletion",
                 "Outbound email archive tombstone",
-                "archiveId=" + archive.getId() + " documentNo=" + documentId(archive),
+                AUDIT_ARCHIVE_ID_PREFIX + archive.getId() + AUDIT_DOCUMENT_NO_PREFIX + documentId(archive),
                 demographicNo(archive),
                 ""));
 
@@ -657,10 +660,13 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         });
     }
 
-    private Path resolveArchivedArtifactPath(String fileName) throws IOException {
+    @SuppressFBWarnings(
+            value = "PATH_TRAVERSAL_IN",
+            justification = "Archive eDoc reads validate the generated filename as a single path component and revalidate DOCUMENT_DIR containment before reading.")
+    private Path resolveArchivedArtifactPath(String fileName) {
         File documentDirectory = PathValidationUtils.resolveConfiguredDirectory(
-                carlosProperties.getProperty("DOCUMENT_DIR"),
-                "DOCUMENT_DIR");
+                carlosProperties.getProperty(DOCUMENT_DIR_PROPERTY),
+                DOCUMENT_DIR_PROPERTY);
         String safeFileName = PathValidationUtils.validatePathComponent(fileName, "archive eDoc filename");
         File archiveFile = PathValidationUtils.validateExistingPath(new File(documentDirectory, safeFileName), documentDirectory);
         return archiveFile.toPath();
@@ -706,7 +712,10 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private void validateArchiveHash(String expectedSha256Hash, byte[] artifactBytes) throws IOException {
-        if (!expectedSha256Hash.equals(sha256Hex(artifactBytes))) {
+        String actualSha256Hash = sha256Hex(artifactBytes);
+        if (!MessageDigest.isEqual(
+                expectedSha256Hash.getBytes(StandardCharsets.US_ASCII),
+                actualSha256Hash.getBytes(StandardCharsets.US_ASCII))) {
             throw new IOException("Archived artifact hash does not match archive metadata");
         }
     }
@@ -717,8 +726,8 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     private void deleteArchivedDocumentFile(String fileName) {
         try {
             File documentDirectory = PathValidationUtils.resolveConfiguredDirectory(
-                    carlosProperties.getProperty("DOCUMENT_DIR"),
-                    "DOCUMENT_DIR");
+                    carlosProperties.getProperty(DOCUMENT_DIR_PROPERTY),
+                    DOCUMENT_DIR_PROPERTY);
             String safeFileName = PathValidationUtils.validatePathComponent(fileName, "archive eDoc filename");
             File archiveFile = PathValidationUtils.validateExistingPath(new File(documentDirectory, safeFileName), documentDirectory);
             Files.deleteIfExists(archiveFile.toPath());

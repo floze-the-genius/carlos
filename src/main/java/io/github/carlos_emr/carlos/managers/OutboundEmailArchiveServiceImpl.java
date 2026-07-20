@@ -200,6 +200,46 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public OutboundEmailArchive getActiveArchive(LoggedInInfo loggedInInfo, Integer archiveId) {
+        OutboundEmailArchive archive = loadActiveArchiveForRead(loggedInInfo, archiveId);
+        registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
+                "OutboundEmailArchiveService.getActiveArchive",
+                "Outbound email archive",
+                "archiveId=" + archive.getId() + " documentNo=" + documentId(archive),
+                demographicNo(archive),
+                ""));
+        return archive;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @SuppressFBWarnings(
+            value = "PATH_TRAVERSAL_IN",
+            justification = "Archive eDoc reads validate the generated filename as a single path component and revalidate DOCUMENT_DIR containment before reading.")
+    public byte[] readArchivedArtifact(LoggedInInfo loggedInInfo, Integer archiveId) throws IOException {
+        OutboundEmailArchive archive = loadActiveArchiveForRead(loggedInInfo, archiveId);
+        Document document = archive.getDocument();
+        if (document == null || document.getDocfilename() == null || document.getDocfilename().isBlank()) {
+            throw new IllegalStateException("Outbound email archive document is required");
+        }
+
+        File documentDirectory = PathValidationUtils.resolveConfiguredDirectory(
+                CarlosProperties.getInstance().getProperty("DOCUMENT_DIR"),
+                "DOCUMENT_DIR");
+        String safeFileName = PathValidationUtils.validatePathComponent(document.getDocfilename(), "archive eDoc filename");
+        File archiveFile = PathValidationUtils.validateExistingPath(new File(documentDirectory, safeFileName), documentDirectory);
+        byte[] artifactBytes = Files.readAllBytes(archiveFile.toPath());
+        registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
+                "OutboundEmailArchiveService.readArchivedArtifact",
+                "Outbound email archive",
+                "archiveId=" + archive.getId() + " documentNo=" + document.getId(),
+                demographicNo(archive),
+                ""));
+        return artifactBytes;
+    }
+
+    @Override
     @Transactional
     public OutboundEmailArchiveDeletion recordControlledDeletion(LoggedInInfo loggedInInfo, Integer archiveId, String deleteReason) {
         if (archiveId == null) {
@@ -504,6 +544,34 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private void authorizeArchiveAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
+        if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
+            throw new SecurityException("not authorized for outbound email archive demographic");
+        }
+    }
+
+    private OutboundEmailArchive loadActiveArchiveForRead(LoggedInInfo loggedInInfo, Integer archiveId) {
+        if (archiveId == null) {
+            throw new IllegalArgumentException("Archive ID is required");
+        }
+        OutboundEmailArchive archive = outboundEmailArchiveDao.find(archiveId);
+        if (archive == null) {
+            throw new IllegalArgumentException("Outbound email archive not found: " + archiveId);
+        }
+        if (archive.isDeleted()) {
+            throw new IllegalStateException("Outbound email archive has been deleted");
+        }
+        Integer demographicNo = archive.getDemographic() != null ? archive.getDemographic().getDemographicNo() : null;
+        if (demographicNo == null) {
+            throw new IllegalStateException("Outbound email archive demographic is required");
+        }
+        authorizeArchiveReadAccess(loggedInInfo, demographicNo);
+        return archive;
+    }
+
+    private void authorizeArchiveReadAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
+        if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)) {
+            throw new SecurityException("missing required sec object (_edoc r)");
+        }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
             throw new SecurityException("not authorized for outbound email archive demographic");
         }

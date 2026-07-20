@@ -415,6 +415,78 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should return active archive metadata when read access is allowed")
+    void shouldReturnActiveArchiveMetadata_whenReadAccessAllowed() {
+        OutboundEmailArchive archive = archiveForDeletion();
+        when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+
+        OutboundEmailArchive result = service.getActiveArchive(loggedInInfo, 888);
+
+        assertThat(result).isSameAs(archive);
+        logActionMock.verify(() -> LogAction.addLog(loggedInInfo,
+                "OutboundEmailArchiveService.getActiveArchive",
+                "Outbound email archive",
+                "archiveId=888 documentNo=321",
+                "123",
+                ""));
+    }
+
+    @Test
+    @DisplayName("should read archived artifact bytes when read access is allowed")
+    void shouldReadArchivedArtifactBytes_whenReadAccessAllowed(@TempDir Path documentDir) throws Exception {
+        CarlosProperties props = CarlosProperties.getInstance();
+        boolean hadDocumentDir = props.containsKey("DOCUMENT_DIR");
+        Object originalDocumentDir = props.get("DOCUMENT_DIR");
+        props.setProperty("DOCUMENT_DIR", documentDir.toString());
+
+        try {
+            OutboundEmailArchive archive = archiveForDeletion();
+            Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), RFC822_BYTES);
+            when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+
+            byte[] artifactBytes = service.readArchivedArtifact(loggedInInfo, 888);
+
+            assertThat(artifactBytes).isEqualTo(RFC822_BYTES);
+            logActionMock.verify(() -> LogAction.addLog(loggedInInfo,
+                    "OutboundEmailArchiveService.readArchivedArtifact",
+                    "Outbound email archive",
+                    "archiveId=888 documentNo=321",
+                    "123",
+                    ""));
+        } finally {
+            if (hadDocumentDir) {
+                props.put("DOCUMENT_DIR", originalDocumentDir);
+            } else {
+                props.remove("DOCUMENT_DIR");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("should reject active archive metadata without eDoc read authority")
+    void shouldRejectActiveArchiveMetadata_whenCallerLacksEdocReadAuthority() {
+        OutboundEmailArchive archive = archiveForDeletion();
+        when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+        when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getActiveArchive(loggedInInfo, 888))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("_edoc");
+    }
+
+    @Test
+    @DisplayName("should reject reading a controlled-deleted archive")
+    void shouldRejectArchivedArtifactRead_whenArchiveIsDeleted() {
+        OutboundEmailArchive archive = archiveForDeletion();
+        archive.markDeleted(PROVIDER_NO, "Patient requested cleanup");
+        when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+
+        assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("deleted");
+    }
+
+    @Test
     @DisplayName("should mark archive deleted and persist tombstone")
     void shouldMarkArchiveDeletedAndPersistTombstone_whenDeletionAllowed() {
         OutboundEmailArchive archive = archiveForDeletion();
@@ -637,6 +709,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     private void allowControlledDeletion() {
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)).thenReturn(false);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)).thenReturn(true);
+        when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)).thenReturn(true);
         when(securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, 123)).thenReturn(true);
     }
 }

@@ -34,9 +34,11 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @DisplayName("OutboundEmailArchiveDaoImpl")
@@ -123,5 +125,24 @@ class OutboundEmailArchiveDaoImplUnitTest {
     void shouldReturnNull_whenForUpdateArchiveIdIsNull() {
         assertThat(dao.findForUpdate(null)).isNull();
         verify(entityManager, never()).createNativeQuery(FIND_FOR_UPDATE_SQL, OutboundEmailArchive.class);
+    }
+
+    @Test
+    void shouldRejectPhysicalDeletionMethods() {
+        OutboundEmailArchive archive = new OutboundEmailArchive();
+
+        assertThatThrownBy(() -> dao.remove(archive))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("controlled tombstone workflow");
+        assertThatThrownBy(() -> dao.remove(888))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("controlled tombstone workflow");
+        assertThatThrownBy(() -> dao.batchRemove(List.of(archive)))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("controlled tombstone workflow");
+        assertThatThrownBy(() -> dao.batchRemove(List.of(archive), 25))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("controlled tombstone workflow");
+        verifyNoInteractions(entityManager);
     }
 }

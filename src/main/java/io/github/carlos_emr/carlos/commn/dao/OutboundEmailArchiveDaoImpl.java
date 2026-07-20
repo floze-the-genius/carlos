@@ -22,6 +22,7 @@
 
 package io.github.carlos_emr.carlos.commn.dao;
 
+import io.github.carlos_emr.carlos.commn.model.AbstractModel;
 import io.github.carlos_emr.carlos.commn.model.OutboundEmailArchive;
 import jakarta.persistence.Query;
 import jakarta.persistence.TypedQuery;
@@ -35,8 +36,31 @@ import java.util.List;
 @Repository
 public class OutboundEmailArchiveDaoImpl extends AbstractDaoImpl<OutboundEmailArchive> implements OutboundEmailArchiveDao {
 
+    private static final String PHYSICAL_DELETE_DISABLED_MESSAGE =
+            "Outbound email archives must be deleted through the controlled tombstone workflow";
+
     public OutboundEmailArchiveDaoImpl() {
         super(OutboundEmailArchive.class);
+    }
+
+    @Override
+    public void remove(AbstractModel<?> o) {
+        throw new UnsupportedOperationException(PHYSICAL_DELETE_DISABLED_MESSAGE);
+    }
+
+    @Override
+    public boolean remove(Object id) {
+        throw new UnsupportedOperationException(PHYSICAL_DELETE_DISABLED_MESSAGE);
+    }
+
+    @Override
+    public void batchRemove(List<OutboundEmailArchive> oList) {
+        throw new UnsupportedOperationException(PHYSICAL_DELETE_DISABLED_MESSAGE);
+    }
+
+    @Override
+    public void batchRemove(List<OutboundEmailArchive> oList, int batchSize) {
+        throw new UnsupportedOperationException(PHYSICAL_DELETE_DISABLED_MESSAGE);
     }
 
     @Override

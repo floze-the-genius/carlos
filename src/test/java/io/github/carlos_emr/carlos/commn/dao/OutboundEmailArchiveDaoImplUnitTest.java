@@ -130,6 +130,7 @@ class OutboundEmailArchiveDaoImplUnitTest {
     @Test
     void shouldRejectPhysicalDeletionMethods() {
         OutboundEmailArchive archive = new OutboundEmailArchive();
+        List<OutboundEmailArchive> archives = List.of(archive);
 
         assertThatThrownBy(() -> dao.remove(archive))
                 .isInstanceOf(UnsupportedOperationException.class)
@@ -137,10 +138,10 @@ class OutboundEmailArchiveDaoImplUnitTest {
         assertThatThrownBy(() -> dao.remove(888))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("controlled tombstone workflow");
-        assertThatThrownBy(() -> dao.batchRemove(List.of(archive)))
+        assertThatThrownBy(() -> dao.batchRemove(archives))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("controlled tombstone workflow");
-        assertThatThrownBy(() -> dao.batchRemove(List.of(archive), 25))
+        assertThatThrownBy(() -> dao.batchRemove(archives, 25))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("controlled tombstone workflow");
         verifyNoInteractions(entityManager);

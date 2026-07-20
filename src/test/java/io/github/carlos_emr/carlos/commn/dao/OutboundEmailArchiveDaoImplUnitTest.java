@@ -25,6 +25,7 @@ package io.github.carlos_emr.carlos.commn.dao;
 import io.github.carlos_emr.carlos.commn.model.OutboundEmailArchive;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import jakarta.persistence.TypedQuery;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -43,20 +44,56 @@ import static org.mockito.Mockito.when;
 @Tag("dao")
 class OutboundEmailArchiveDaoImplUnitTest {
 
+    private static final String FIND_FOR_READ_JPQL =
+            "SELECT archive FROM OutboundEmailArchive archive "
+                    + "LEFT JOIN FETCH archive.demographic "
+                    + "LEFT JOIN FETCH archive.document "
+                    + "WHERE archive.id = :archiveId";
     private static final String FIND_FOR_UPDATE_SQL =
             "SELECT * FROM outboundEmailArchive WHERE id = ?1 FOR UPDATE";
 
     private OutboundEmailArchiveDaoImpl dao;
     private EntityManager entityManager;
     private Query query;
+    private TypedQuery<OutboundEmailArchive> typedQuery;
 
     @BeforeEach
     void setUp() {
         dao = new OutboundEmailArchiveDaoImpl();
         entityManager = mock(EntityManager.class);
         query = mock(Query.class);
+        typedQuery = mock(TypedQuery.class);
 
         dao.entityManager = entityManager;
+    }
+
+    @Test
+    void shouldFetchDocumentAndDemographic_whenFindingArchiveForRead() {
+        OutboundEmailArchive archive = new OutboundEmailArchive();
+        when(entityManager.createQuery(FIND_FOR_READ_JPQL, OutboundEmailArchive.class)).thenReturn(typedQuery);
+        when(typedQuery.setParameter("archiveId", 888)).thenReturn(typedQuery);
+        when(typedQuery.getResultList()).thenReturn(List.of(archive));
+
+        OutboundEmailArchive result = dao.findForRead(888);
+
+        assertThat(result).isSameAs(archive);
+        verify(entityManager).createQuery(FIND_FOR_READ_JPQL, OutboundEmailArchive.class);
+        verify(typedQuery).setParameter("archiveId", 888);
+    }
+
+    @Test
+    void shouldReturnNull_whenReadArchiveDoesNotExist() {
+        when(entityManager.createQuery(FIND_FOR_READ_JPQL, OutboundEmailArchive.class)).thenReturn(typedQuery);
+        when(typedQuery.setParameter("archiveId", 888)).thenReturn(typedQuery);
+        when(typedQuery.getResultList()).thenReturn(List.of());
+
+        assertThat(dao.findForRead(888)).isNull();
+    }
+
+    @Test
+    void shouldReturnNull_whenReadArchiveIdIsNull() {
+        assertThat(dao.findForRead(null)).isNull();
+        verify(entityManager, never()).createQuery(FIND_FOR_READ_JPQL, OutboundEmailArchive.class);
     }
 
     @Test

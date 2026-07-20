@@ -49,6 +49,22 @@ public class OutboundEmailArchiveDaoImpl extends AbstractDaoImpl<OutboundEmailAr
     }
 
     @Override
+    public OutboundEmailArchive findForRead(Integer archiveId) {
+        if (archiveId == null) {
+            return null;
+        }
+        TypedQuery<OutboundEmailArchive> query = entityManager.createQuery(
+                "SELECT archive FROM OutboundEmailArchive archive "
+                        + "LEFT JOIN FETCH archive.demographic "
+                        + "LEFT JOIN FETCH archive.document "
+                        + "WHERE archive.id = :archiveId",
+                OutboundEmailArchive.class);
+        query.setParameter("archiveId", archiveId);
+        List<OutboundEmailArchive> rows = query.getResultList();
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    @Override
     public OutboundEmailArchive findForUpdate(Integer archiveId) {
         if (archiveId == null) {
             return null;

@@ -44,19 +44,25 @@ import io.github.carlos_emr.carlos.utility.MiscUtils;
 import io.github.carlos_emr.carlos.utility.PathValidationUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
+import java.util.Properties;
 import java.util.UUID;
 
 /**
@@ -73,6 +79,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     private static final String DOCUMENT_DOCTYPE = "email";
     private static final String DOCUMENT_SOURCE = "Outbound Email Archive";
     private static final String CTL_DOCUMENT_MODULE_DEMOGRAPHIC = "demographic";
+    private static final long MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
 
     private final DocumentManager documentManager;
 
@@ -86,6 +93,8 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
 
     private final SecurityInfoManager securityInfoManager;
 
+    private final Properties carlosProperties;
+
     @Autowired
     public OutboundEmailArchiveServiceImpl(
             DocumentManager documentManager,
@@ -94,12 +103,30 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             OutboundEmailArchiveDeletionDao outboundEmailArchiveDeletionDao,
             CtlDocumentDao ctlDocumentDao,
             SecurityInfoManager securityInfoManager) {
+        this(documentManager,
+                emailLogDao,
+                outboundEmailArchiveDao,
+                outboundEmailArchiveDeletionDao,
+                ctlDocumentDao,
+                securityInfoManager,
+                CarlosProperties.getInstance());
+    }
+
+    OutboundEmailArchiveServiceImpl(
+            DocumentManager documentManager,
+            EmailLogDao emailLogDao,
+            OutboundEmailArchiveDao outboundEmailArchiveDao,
+            OutboundEmailArchiveDeletionDao outboundEmailArchiveDeletionDao,
+            CtlDocumentDao ctlDocumentDao,
+            SecurityInfoManager securityInfoManager,
+            Properties carlosProperties) {
         this.documentManager = documentManager;
         this.emailLogDao = emailLogDao;
         this.outboundEmailArchiveDao = outboundEmailArchiveDao;
         this.outboundEmailArchiveDeletionDao = outboundEmailArchiveDeletionDao;
         this.ctlDocumentDao = ctlDocumentDao;
         this.securityInfoManager = securityInfoManager;
+        this.carlosProperties = Objects.requireNonNull(carlosProperties, "carlosProperties");
     }
 
     @SuppressWarnings("java:S6206") // A record would generate byte[] identity-based equals/hashCode/toString for artifactBytes.
@@ -203,17 +230,19 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     @Transactional(readOnly = true)
     public OutboundEmailArchive getActiveArchive(LoggedInInfo loggedInInfo, Integer archiveId) {
         OutboundEmailArchive archive = loadActiveArchiveForRead(loggedInInfo, archiveId);
+        String auditDetails = "archiveId=" + archive.getId() + " documentNo=" + documentId(archive);
+        String auditDemographicNo = demographicNo(archive);
         registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.getActiveArchive",
                 "Outbound email archive",
-                "archiveId=" + archive.getId() + " documentNo=" + documentId(archive),
-                demographicNo(archive),
+                auditDetails,
+                auditDemographicNo,
                 ""));
         return archive;
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     @SuppressFBWarnings(
             value = "PATH_TRAVERSAL_IN",
             justification = "Archive eDoc reads validate the generated filename as a single path component and revalidate DOCUMENT_DIR containment before reading.")
@@ -223,19 +252,23 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         if (document == null || document.getDocfilename() == null || document.getDocfilename().isBlank()) {
             throw new IllegalStateException("Outbound email archive document is required");
         }
+        Long expectedByteSize = archive.getByteSize();
+        if (expectedByteSize == null) {
+            throw new IllegalStateException("Outbound email archive byte size is required");
+        }
+        String expectedSha256Hash = normalizeSha256Hex(archive.getSha256Hash(), "Outbound email archive SHA-256 hash");
+        String auditDetails = "archiveId=" + archive.getId() + " documentNo=" + document.getId();
+        String auditDemographicNo = demographicNo(archive);
 
-        File documentDirectory = PathValidationUtils.resolveConfiguredDirectory(
-                CarlosProperties.getInstance().getProperty("DOCUMENT_DIR"),
-                "DOCUMENT_DIR");
-        String safeFileName = PathValidationUtils.validatePathComponent(document.getDocfilename(), "archive eDoc filename");
-        File archiveFile = PathValidationUtils.validateExistingPath(new File(documentDirectory, safeFileName), documentDirectory);
-        byte[] artifactBytes = Files.readAllBytes(archiveFile.toPath());
-        registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
+        Path archivePath = resolveArchivedArtifactPath(document.getDocfilename());
+        byte[] artifactBytes = readArchivedArtifactBytes(archivePath, expectedByteSize);
+        validateArchiveHash(expectedSha256Hash, artifactBytes);
+        LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.readArchivedArtifact",
                 "Outbound email archive",
-                "archiveId=" + archive.getId() + " documentNo=" + document.getId(),
-                demographicNo(archive),
-                ""));
+                auditDetails,
+                auditDemographicNo,
+                "");
         return artifactBytes;
     }
 
@@ -395,7 +428,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             sha256Hash = sha256Hex(attachmentBytes);
             byteSize = (long) attachmentBytes.length;
         }
-        sha256Hash = normalizeSha256Hex(sha256Hash);
+        sha256Hash = normalizeSha256Hex(sha256Hash, "Attachment SHA-256 hash");
         if (byteSize == null || byteSize < 0) {
             throw new IllegalArgumentException("Attachment byte size is required");
         }
@@ -501,19 +534,19 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         return value.substring(0, maxLength);
     }
 
-    private String normalizeSha256Hex(String sha256Hash) {
+    private String normalizeSha256Hex(String sha256Hash, String fieldName) {
         if (sha256Hash == null) {
-            throw new IllegalArgumentException("Attachment SHA-256 hash is required");
+            throw new IllegalArgumentException(fieldName + " is required");
         }
         String normalizedHash = sha256Hash.trim();
         if (normalizedHash.length() != 64) {
-            throw new IllegalArgumentException("Attachment SHA-256 hash must be 64 hex characters");
+            throw new IllegalArgumentException(fieldName + " must be 64 hex characters");
         }
         StringBuilder lowerCaseHash = new StringBuilder(64);
         for (int i = 0; i < normalizedHash.length(); i++) {
             char value = normalizedHash.charAt(i);
             if (!isAsciiHexDigit(value)) {
-                throw new IllegalArgumentException("Attachment SHA-256 hash must be 64 hex characters");
+                throw new IllegalArgumentException(fieldName + " must be 64 hex characters");
             }
             lowerCaseHash.append(toLowerAscii(value));
         }
@@ -550,10 +583,13 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private OutboundEmailArchive loadActiveArchiveForRead(LoggedInInfo loggedInInfo, Integer archiveId) {
+        if (loggedInInfo == null) {
+            throw new IllegalArgumentException("Logged-in user context is required");
+        }
         if (archiveId == null) {
             throw new IllegalArgumentException("Archive ID is required");
         }
-        OutboundEmailArchive archive = outboundEmailArchiveDao.find(archiveId);
+        OutboundEmailArchive archive = outboundEmailArchiveDao.findForRead(archiveId);
         if (archive == null) {
             throw new IllegalArgumentException("Outbound email archive not found: " + archiveId);
         }
@@ -621,13 +657,67 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         });
     }
 
+    private Path resolveArchivedArtifactPath(String fileName) throws IOException {
+        File documentDirectory = PathValidationUtils.resolveConfiguredDirectory(
+                carlosProperties.getProperty("DOCUMENT_DIR"),
+                "DOCUMENT_DIR");
+        String safeFileName = PathValidationUtils.validatePathComponent(fileName, "archive eDoc filename");
+        File archiveFile = PathValidationUtils.validateExistingPath(new File(documentDirectory, safeFileName), documentDirectory);
+        return archiveFile.toPath();
+    }
+
+    private byte[] readArchivedArtifactBytes(Path archivePath, long expectedByteSize) throws IOException {
+        validateArchivedArtifactSize(expectedByteSize);
+
+        long fileSize = Files.size(archivePath);
+        validateArchivedArtifactSize(fileSize);
+        if (fileSize != expectedByteSize) {
+            throw new IOException("Archived artifact size does not match archive metadata");
+        }
+
+        try (InputStream inputStream = Files.newInputStream(archivePath);
+                ByteArrayOutputStream outputStream = new ByteArrayOutputStream((int) fileSize)) {
+            byte[] buffer = new byte[8192];
+            long totalBytes = 0L;
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                totalBytes += bytesRead;
+                if (totalBytes > MAX_ARCHIVED_ARTIFACT_BYTES) {
+                    throw new IOException(
+                            "Archived artifact exceeds maximum read size of " + MAX_ARCHIVED_ARTIFACT_BYTES + " bytes");
+                }
+                outputStream.write(buffer, 0, bytesRead);
+            }
+            if (totalBytes != expectedByteSize) {
+                throw new IOException("Archived artifact size does not match archive metadata");
+            }
+            return outputStream.toByteArray();
+        }
+    }
+
+    private void validateArchivedArtifactSize(long byteSize) throws IOException {
+        if (byteSize < 0) {
+            throw new IOException("Archived artifact size is invalid");
+        }
+        if (byteSize > MAX_ARCHIVED_ARTIFACT_BYTES) {
+            throw new IOException("Archived artifact exceeds maximum read size of "
+                    + MAX_ARCHIVED_ARTIFACT_BYTES + " bytes");
+        }
+    }
+
+    private void validateArchiveHash(String expectedSha256Hash, byte[] artifactBytes) throws IOException {
+        if (!expectedSha256Hash.equals(sha256Hex(artifactBytes))) {
+            throw new IOException("Archived artifact hash does not match archive metadata");
+        }
+    }
+
     @SuppressFBWarnings(
             value = "PATH_TRAVERSAL_IN",
             justification = "Archive eDoc cleanup validates the generated filename as a single path component and revalidates DOCUMENT_DIR containment before deletion.")
     private void deleteArchivedDocumentFile(String fileName) {
         try {
             File documentDirectory = PathValidationUtils.resolveConfiguredDirectory(
-                    CarlosProperties.getInstance().getProperty("DOCUMENT_DIR"),
+                    carlosProperties.getProperty("DOCUMENT_DIR"),
                     "DOCUMENT_DIR");
             String safeFileName = PathValidationUtils.validatePathComponent(fileName, "archive eDoc filename");
             File archiveFile = PathValidationUtils.validateExistingPath(new File(documentDirectory, safeFileName), documentDirectory);

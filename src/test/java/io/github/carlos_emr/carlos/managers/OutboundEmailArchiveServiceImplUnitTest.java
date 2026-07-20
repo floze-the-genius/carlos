@@ -22,7 +22,6 @@
 
 package io.github.carlos_emr.carlos.managers;
 
-import io.github.carlos_emr.CarlosProperties;
 import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.EmailLogDao;
 import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
@@ -52,12 +51,15 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,6 +78,7 @@ import static org.mockito.Mockito.when;
 class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
 
     private static final String PROVIDER_NO = "999998";
+    private static final long MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
     private static final byte[] RFC822_BYTES = "Subject: Test\r\n\r\nBody".getBytes(StandardCharsets.UTF_8);
 
     private DocumentManager documentManager;
@@ -85,6 +88,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     private CtlDocumentDao ctlDocumentDao;
     private SecurityInfoManager securityInfoManager;
     private LoggedInInfo loggedInInfo;
+    private Properties testProperties;
     private OutboundEmailArchiveServiceImpl service;
 
     @BeforeEach
@@ -96,7 +100,15 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         ctlDocumentDao = mock(CtlDocumentDao.class);
         securityInfoManager = mock(SecurityInfoManager.class);
         loggedInInfo = mock(LoggedInInfo.class);
-        service = new OutboundEmailArchiveServiceImpl(documentManager, emailLogDao, outboundEmailArchiveDao, outboundEmailArchiveDeletionDao, ctlDocumentDao, securityInfoManager);
+        testProperties = new Properties();
+        service = new OutboundEmailArchiveServiceImpl(
+                documentManager,
+                emailLogDao,
+                outboundEmailArchiveDao,
+                outboundEmailArchiveDeletionDao,
+                ctlDocumentDao,
+                securityInfoManager,
+                testProperties);
 
         when(loggedInInfo.getLoggedInProviderNo()).thenReturn(PROVIDER_NO);
         allowControlledDeletion();
@@ -189,39 +201,27 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should delete final eDoc file when createDocument fails after filename normalization")
     void shouldDeleteFinalEdocFile_whenCreateDocumentFailsAfterFilenameNormalization(@TempDir Path documentDir) throws Exception {
-        CarlosProperties props = CarlosProperties.getInstance();
-        boolean hadDocumentDir = props.containsKey("DOCUMENT_DIR");
-        Object originalDocumentDir = props.get("DOCUMENT_DIR");
-        props.setProperty("DOCUMENT_DIR", documentDir.toString());
+        testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
+        EmailLog emailLog = emailLog();
+        OutboundEmailArchiveDto request = archiveRequest(emailLog);
+        AtomicReference<Path> createdFile = new AtomicReference<>();
+        doAnswer(invocation -> {
+            Document documentToCreate = invocation.getArgument(1);
+            documentToCreate.setDocfilename("20260707120000_" + documentToCreate.getDocfilename());
+            Path file = documentDir.resolve(documentToCreate.getDocfilename());
+            Files.write(file, RFC822_BYTES);
+            createdFile.set(file);
+            throw new RuntimeException("document database failed");
+        }).when(documentManager).createDocument(eq(loggedInInfo), any(Document.class), eq(123), eq(PROVIDER_NO), eq(RFC822_BYTES));
 
-        try {
-            EmailLog emailLog = emailLog();
-            OutboundEmailArchiveDto request = archiveRequest(emailLog);
-            AtomicReference<Path> createdFile = new AtomicReference<>();
-            doAnswer(invocation -> {
-                Document documentToCreate = invocation.getArgument(1);
-                documentToCreate.setDocfilename("20260707120000_" + documentToCreate.getDocfilename());
-                Path file = documentDir.resolve(documentToCreate.getDocfilename());
-                Files.write(file, RFC822_BYTES);
-                createdFile.set(file);
-                throw new RuntimeException("document database failed");
-            }).when(documentManager).createDocument(eq(loggedInInfo), any(Document.class), eq(123), eq(PROVIDER_NO), eq(RFC822_BYTES));
+        assertThatThrownBy(() -> service.archive(loggedInInfo, request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("document database failed");
 
-            assertThatThrownBy(() -> service.archive(loggedInInfo, request))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("document database failed");
-
-            Path file = createdFile.get();
-            assertThat(file).isNotNull();
-            assertThat(file).doesNotExist();
-            verify(outboundEmailArchiveDao, never()).persist(any(OutboundEmailArchive.class));
-        } finally {
-            if (hadDocumentDir) {
-                props.put("DOCUMENT_DIR", originalDocumentDir);
-            } else {
-                props.remove("DOCUMENT_DIR");
-            }
-        }
+        Path file = createdFile.get();
+        assertThat(file).isNotNull();
+        assertThat(file).doesNotExist();
+        verify(outboundEmailArchiveDao, never()).persist(any(OutboundEmailArchive.class));
     }
 
     @Test
@@ -415,10 +415,20 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject active archive metadata when logged-in context is missing")
+    void shouldRejectActiveArchiveMetadata_whenLoggedInContextMissing() {
+        assertThatThrownBy(() -> service.getActiveArchive(null, 888))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Logged-in user context is required");
+
+        verifyNoInteractions(outboundEmailArchiveDao);
+    }
+
+    @Test
     @DisplayName("should return active archive metadata when read access is allowed")
     void shouldReturnActiveArchiveMetadata_whenReadAccessAllowed() {
         OutboundEmailArchive archive = archiveForDeletion();
-        when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
 
         OutboundEmailArchive result = service.getActiveArchive(loggedInInfo, 888);
 
@@ -434,39 +444,79 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should read archived artifact bytes when read access is allowed")
     void shouldReadArchivedArtifactBytes_whenReadAccessAllowed(@TempDir Path documentDir) throws Exception {
-        CarlosProperties props = CarlosProperties.getInstance();
-        boolean hadDocumentDir = props.containsKey("DOCUMENT_DIR");
-        Object originalDocumentDir = props.get("DOCUMENT_DIR");
-        props.setProperty("DOCUMENT_DIR", documentDir.toString());
+        testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
+        OutboundEmailArchive archive = archiveForDeletion();
+        Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), RFC822_BYTES);
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
 
-        try {
-            OutboundEmailArchive archive = archiveForDeletion();
-            Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), RFC822_BYTES);
-            when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+        byte[] artifactBytes = service.readArchivedArtifact(loggedInInfo, 888);
 
-            byte[] artifactBytes = service.readArchivedArtifact(loggedInInfo, 888);
+        assertThat(artifactBytes).isEqualTo(RFC822_BYTES);
+        logActionMock.verify(() -> LogAction.addLog(loggedInInfo,
+                "OutboundEmailArchiveService.readArchivedArtifact",
+                "Outbound email archive",
+                "archiveId=888 documentNo=321",
+                "123",
+                ""));
+    }
 
-            assertThat(artifactBytes).isEqualTo(RFC822_BYTES);
-            logActionMock.verify(() -> LogAction.addLog(loggedInInfo,
-                    "OutboundEmailArchiveService.readArchivedArtifact",
-                    "Outbound email archive",
-                    "archiveId=888 documentNo=321",
-                    "123",
-                    ""));
-        } finally {
-            if (hadDocumentDir) {
-                props.put("DOCUMENT_DIR", originalDocumentDir);
-            } else {
-                props.remove("DOCUMENT_DIR");
-            }
+    @Test
+    @DisplayName("should reject archived artifact read when file exceeds bounded read size")
+    void shouldRejectArchivedArtifactRead_whenFileExceedsBoundedReadSize(@TempDir Path documentDir) throws Exception {
+        testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
+        OutboundEmailArchive archive = archiveForDeletion();
+        long oversizedLength = MAX_ARCHIVED_ARTIFACT_BYTES + 1L;
+        archive.setByteSize(oversizedLength);
+        Path artifact = documentDir.resolve("20260707120000_outbound-email-44.eml");
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(artifact.toFile(), "rw")) {
+            randomAccessFile.setLength(oversizedLength);
         }
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
+
+        assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("maximum read size");
+
+        logActionMock.verifyNoInteractions();
+    }
+
+    @Test
+    @DisplayName("should reject archived artifact read when file size differs from archive metadata")
+    void shouldRejectArchivedArtifactRead_whenFileSizeDiffersFromMetadata(@TempDir Path documentDir) throws Exception {
+        testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
+        OutboundEmailArchive archive = archiveForDeletion();
+        Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), "tampered".getBytes(StandardCharsets.UTF_8));
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
+
+        assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("size does not match");
+
+        logActionMock.verifyNoInteractions();
+    }
+
+    @Test
+    @DisplayName("should reject archived artifact read when file hash differs from archive metadata")
+    void shouldRejectArchivedArtifactRead_whenFileHashDiffersFromMetadata(@TempDir Path documentDir) throws Exception {
+        testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
+        byte[] tamperedBytes = "Subject: Evil\r\n\r\nBody".getBytes(StandardCharsets.UTF_8);
+        OutboundEmailArchive archive = archiveForDeletion();
+        archive.setByteSize((long) tamperedBytes.length);
+        Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), tamperedBytes);
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
+
+        assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("hash does not match");
+
+        logActionMock.verifyNoInteractions();
     }
 
     @Test
     @DisplayName("should reject active archive metadata without eDoc read authority")
     void shouldRejectActiveArchiveMetadata_whenCallerLacksEdocReadAuthority() {
         OutboundEmailArchive archive = archiveForDeletion();
-        when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)).thenReturn(false);
 
         assertThatThrownBy(() -> service.getActiveArchive(loggedInInfo, 888))
@@ -479,7 +529,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     void shouldRejectArchivedArtifactRead_whenArchiveIsDeleted() {
         OutboundEmailArchive archive = archiveForDeletion();
         archive.markDeleted(PROVIDER_NO, "Patient requested cleanup");
-        when(outboundEmailArchiveDao.find((Object) Integer.valueOf(888))).thenReturn(archive);
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
 
         assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
                 .isInstanceOf(IllegalStateException.class)

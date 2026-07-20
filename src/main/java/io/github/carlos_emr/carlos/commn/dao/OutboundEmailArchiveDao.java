@@ -40,6 +40,14 @@ public interface OutboundEmailArchiveDao extends AbstractDao<OutboundEmailArchiv
     List<OutboundEmailArchive> findByEmailLogId(Integer emailLogId);
 
     /**
+     * Finds an archive row with the associations required for read authorization and file access initialized.
+     *
+     * @param archiveId persisted archive identifier
+     * @return archive row with demographic and document loaded, or {@code null} when no row exists
+     */
+    OutboundEmailArchive findForRead(Integer archiveId);
+
+    /**
      * Finds an archive row with a write lock for short controlled-deletion critical sections.
      *
      * @param archiveId persisted archive identifier

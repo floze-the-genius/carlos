@@ -65,7 +65,8 @@ public interface OutboundEmailArchiveService {
      * @param loggedInInfo current user context for permissions and audit logging
      * @param archiveId archive metadata identifier
      * @return archived artifact bytes
-     * @throws IOException when the archived eDoc file cannot be read
+     * @throws IOException when the archived eDoc file cannot be read or does not match archive metadata
+     * @throws IllegalStateException when required archive metadata is missing
      */
     byte[] readArchivedArtifact(LoggedInInfo loggedInInfo, Integer archiveId) throws IOException;
 

@@ -31,14 +31,19 @@ SELECT required_reference_tables.table_name
  ORDER BY required_reference_tables.sort_order
  LIMIT 1;
 
--- Fail before any engine conversion if a required table is missing. This keeps
--- the migration free of persistent helper routines, so failed upgrades do not
--- leave temporary procedures behind.
-SET @outbound_archive_reference_engine_sql = IF(
-  @missing_outbound_archive_reference_table IS NULL,
-  'SELECT ''outbound archive reference tables exist'' AS message',
-  'SELECT 1 FROM `missing_required_outbound_archive_reference_table`'
-);
+-- Fail before any engine conversion if a required table is missing. The failure
+-- branch alters the required table that failed preflight, avoiding sentinel
+-- names that could collide with existing schema contents while keeping the
+-- migration free of persistent helper routines.
+SET @outbound_archive_reference_engine_sql = CASE
+  WHEN @missing_outbound_archive_reference_table = 'document'
+    THEN 'ALTER TABLE `document` ENGINE=InnoDB'
+  WHEN @missing_outbound_archive_reference_table = 'emailConfig'
+    THEN 'ALTER TABLE `emailConfig` ENGINE=InnoDB'
+  WHEN @missing_outbound_archive_reference_table = 'emailLog'
+    THEN 'ALTER TABLE `emailLog` ENGINE=InnoDB'
+  ELSE 'SELECT ''outbound archive reference tables exist'' AS message'
+END;
 PREPARE outbound_archive_reference_engine_stmt FROM @outbound_archive_reference_engine_sql;
 EXECUTE outbound_archive_reference_engine_stmt;
 DEALLOCATE PREPARE outbound_archive_reference_engine_stmt;

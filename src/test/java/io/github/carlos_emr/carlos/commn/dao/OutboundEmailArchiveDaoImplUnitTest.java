@@ -53,11 +53,16 @@ class OutboundEmailArchiveDaoImplUnitTest {
                     + "WHERE archive.id = :archiveId";
     private static final String FIND_FOR_UPDATE_SQL =
             "SELECT * FROM outboundEmailArchive WHERE id = ?1 FOR UPDATE";
+    private static final String EXISTS_ACTIVE_BY_DOCUMENT_NO_JPQL =
+            "SELECT COUNT(archive) FROM OutboundEmailArchive archive "
+                    + "WHERE archive.document.documentNo = :documentNo "
+                    + "AND archive.deleted = false";
 
     private OutboundEmailArchiveDaoImpl dao;
     private EntityManager entityManager;
     private Query query;
     private TypedQuery<OutboundEmailArchive> typedQuery;
+    private TypedQuery<Long> countQuery;
 
     @BeforeEach
     void setUp() {
@@ -65,6 +70,7 @@ class OutboundEmailArchiveDaoImplUnitTest {
         entityManager = mock(EntityManager.class);
         query = mock(Query.class);
         typedQuery = mock(TypedQuery.class);
+        countQuery = mock(TypedQuery.class);
 
         dao.entityManager = entityManager;
     }
@@ -127,6 +133,34 @@ class OutboundEmailArchiveDaoImplUnitTest {
     void shouldReturnNull_whenForUpdateArchiveIdIsNull() {
         assertThat(dao.findForUpdate(null)).isNull();
         verify(entityManager, never()).createNativeQuery(FIND_FOR_UPDATE_SQL, OutboundEmailArchive.class);
+    }
+
+    @Test
+    void shouldReturnTrue_whenActiveArchiveExistsForDocumentNo() {
+        when(entityManager.createQuery(EXISTS_ACTIVE_BY_DOCUMENT_NO_JPQL, Long.class)).thenReturn(countQuery);
+        when(countQuery.setParameter("documentNo", 321)).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(1L);
+
+        assertThat(dao.existsActiveByDocumentNo(321)).isTrue();
+
+        verify(entityManager).createQuery(EXISTS_ACTIVE_BY_DOCUMENT_NO_JPQL, Long.class);
+        verify(countQuery).setParameter("documentNo", 321);
+        verify(countQuery).getSingleResult();
+    }
+
+    @Test
+    void shouldReturnFalse_whenNoActiveArchiveExistsForDocumentNo() {
+        when(entityManager.createQuery(EXISTS_ACTIVE_BY_DOCUMENT_NO_JPQL, Long.class)).thenReturn(countQuery);
+        when(countQuery.setParameter("documentNo", 321)).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(0L);
+
+        assertThat(dao.existsActiveByDocumentNo(321)).isFalse();
+    }
+
+    @Test
+    void shouldReturnFalse_whenDocumentNoIsNull() {
+        assertThat(dao.existsActiveByDocumentNo(null)).isFalse();
+        verify(entityManager, never()).createQuery(EXISTS_ACTIVE_BY_DOCUMENT_NO_JPQL, Long.class);
     }
 
     @Test

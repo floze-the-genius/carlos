@@ -102,6 +102,20 @@ public class OutboundEmailArchiveDaoImpl extends AbstractDaoImpl<OutboundEmailAr
     }
 
     @Override
+    public boolean existsActiveByDocumentNo(Integer documentNo) {
+        if (documentNo == null) {
+            return false;
+        }
+        TypedQuery<Long> query = entityManager.createQuery(
+                "SELECT COUNT(archive) FROM OutboundEmailArchive archive "
+                        + "WHERE archive.document.documentNo = :documentNo "
+                        + "AND archive.deleted = false",
+                Long.class);
+        query.setParameter("documentNo", documentNo);
+        return query.getSingleResult() > 0L;
+    }
+
+    @Override
     public List<OutboundEmailArchive> findByDemographicNo(Integer demographicNo) {
         TypedQuery<OutboundEmailArchive> query = entityManager.createQuery(
                 "SELECT archive FROM OutboundEmailArchive archive WHERE archive.demographic.demographicNo = :demographicNo ORDER BY archive.archivedAt DESC",

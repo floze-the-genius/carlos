@@ -235,6 +235,7 @@ public final class EDocUtil {
     private static CtlDocTypeDao ctldoctypedao() { return SpringUtils.getBean(CtlDocTypeDao.class); }
     private static DemographicManager demographicManager() { return SpringUtils.getBean(DemographicManager.class); }
     private static CtlDocumentDao ctlDocumentDao() { return SpringUtils.getBean(CtlDocumentDao.class); }
+    private static OutboundEmailArchiveDao outboundEmailArchiveDao() { return SpringUtils.getBean(OutboundEmailArchiveDao.class); }
 
     public static String getProviderName(String providerNo) {
         if (providerNo == null || providerNo.length() == 0) {
@@ -901,11 +902,20 @@ public final class EDocUtil {
     }
 
     public static void deleteDocument(String documentNo) {
-        Document d = getDocumentDao().find(ConversionUtils.fromIntString(documentNo));
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(documentNo);
+        Document d = getDocumentDao().find(parsedDocumentNo);
         if (d != null) {
+            assertNotActiveOutboundEmailArchiveDocument(parsedDocumentNo);
             d.setStatus('D');
             d.setUpdatedatetime(MyDateFormat.getSysDate(getDmsDateTime()));
             getDocumentDao().merge(d);
+        }
+    }
+
+    private static void assertNotActiveOutboundEmailArchiveDocument(Integer documentNo) {
+        if (outboundEmailArchiveDao().existsActiveByDocumentNo(documentNo)) {
+            throw new IllegalStateException(
+                    "Outbound email archive eDocs must be deleted through the controlled archive deletion workflow");
         }
     }
 

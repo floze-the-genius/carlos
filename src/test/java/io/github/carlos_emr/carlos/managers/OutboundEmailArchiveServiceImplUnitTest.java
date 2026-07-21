@@ -389,6 +389,19 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject archive when artifact exceeds bounded archive size before storing the eDoc")
+    void shouldRejectArchive_whenArtifactExceedsBoundedArchiveSize() {
+        OutboundEmailArchiveDto request = archiveRequest(emailLog());
+        injectDependency(request, "artifactBytes", new byte[Math.toIntExact(MAX_ARCHIVED_ARTIFACT_BYTES + 1L)]);
+
+        assertThatThrownBy(() -> service.archive(loggedInInfo, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maximum archive size");
+
+        verifyNoInteractions(documentManager);
+    }
+
+    @Test
     @DisplayName("should reject archive when logged-in provider is missing")
     void shouldRejectArchive_whenLoggedInProviderMissing() {
         when(loggedInInfo.getLoggedInProviderNo()).thenReturn(" ");
@@ -535,6 +548,20 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("deleted");
+    }
+
+    @Test
+    @DisplayName("should reject archived artifact read when backing eDoc is deleted")
+    void shouldRejectArchivedArtifactRead_whenBackingEdocIsDeleted() {
+        OutboundEmailArchive archive = archiveForDeletion();
+        archive.getDocument().setStatus(Document.STATUS_DELETED);
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
+
+        assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("eDoc has been deleted");
+
+        logActionMock.verifyNoInteractions();
     }
 
     @Test
@@ -719,6 +746,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         document.setDocumentNo(321);
         document.setDocfilename("20260707120000_outbound-email-44.eml");
         document.setContenttype("message/rfc822");
+        document.setStatus(Document.STATUS_ACTIVE);
         return document;
     }
 

@@ -56,6 +56,14 @@ public interface OutboundEmailArchiveDao extends AbstractDao<OutboundEmailArchiv
     OutboundEmailArchive findForUpdate(Integer archiveId);
 
     /**
+     * Checks whether a document is the backing eDoc for an active outbound email archive.
+     *
+     * @param documentNo persisted eDoc identifier
+     * @return {@code true} when the document is linked to a non-deleted archive row
+     */
+    boolean existsActiveByDocumentNo(Integer documentNo);
+
+    /**
      * Finds archive rows for a patient demographic, newest archive first.
      *
      * @param demographicNo patient demographic number

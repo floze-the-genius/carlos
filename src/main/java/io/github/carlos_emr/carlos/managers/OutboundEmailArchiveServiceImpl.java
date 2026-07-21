@@ -327,8 +327,16 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         if (artifactBytes == null || artifactBytes.length == 0) {
             throw new IllegalArgumentException("Outbound artifact bytes are required");
         }
+        validateArchiveRequestArtifactSize(artifactBytes.length);
         if (request.getArtifactType() == null || request.getArtifactType().isBlank()) {
             throw new IllegalArgumentException("Artifact type is required");
+        }
+    }
+
+    private void validateArchiveRequestArtifactSize(long byteSize) {
+        if (byteSize > MAX_ARCHIVED_ARTIFACT_BYTES) {
+            throw new IllegalArgumentException("Outbound artifact exceeds maximum archive size of "
+                    + MAX_ARCHIVED_ARTIFACT_BYTES + " bytes");
         }
     }
 
@@ -604,7 +612,15 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             throw new IllegalStateException("Outbound email archive demographic is required");
         }
         authorizeArchiveReadAccess(loggedInInfo, demographicNo);
+        validateArchiveDocumentNotDeleted(archive);
         return archive;
+    }
+
+    private void validateArchiveDocumentNotDeleted(OutboundEmailArchive archive) {
+        Document document = archive.getDocument();
+        if (document != null && document.getStatus() == Document.STATUS_DELETED) {
+            throw new IllegalStateException("Outbound email archive eDoc has been deleted");
+        }
     }
 
     private void authorizeArchiveReadAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {

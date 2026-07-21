@@ -71,7 +71,7 @@ public class EFormAttachDocs2Action extends ActionSupport {
      */
     @Override
     public String execute() throws ServletException, IOException {
-        if (!"POST".equalsIgnoreCase(request.getMethod())) {
+        if (!"POST".equals(request.getMethod())) {
             response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
             return NONE;
         }

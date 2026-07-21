@@ -81,6 +81,7 @@ class OutboundEmailArchiveDaoImplUnitTest {
         assertThat(result).isSameAs(archive);
         verify(entityManager).createQuery(FIND_FOR_READ_JPQL, OutboundEmailArchive.class);
         verify(typedQuery).setParameter("archiveId", 888);
+        verify(typedQuery).getResultList();
     }
 
     @Test
@@ -110,6 +111,7 @@ class OutboundEmailArchiveDaoImplUnitTest {
         assertThat(result).isSameAs(archive);
         verify(entityManager).createNativeQuery(FIND_FOR_UPDATE_SQL, OutboundEmailArchive.class);
         verify(query).setParameter(1, 888);
+        verify(query).getResultList();
     }
 
     @Test

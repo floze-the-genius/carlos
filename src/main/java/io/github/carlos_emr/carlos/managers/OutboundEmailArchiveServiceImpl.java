@@ -436,6 +436,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         String sha256Hash = request.getSha256Hash();
         Long byteSize = request.getByteSize();
         if (attachmentBytes != null) {
+            validateArchiveRequestArtifactSize(attachmentBytes.length);
             sha256Hash = sha256Hex(attachmentBytes);
             byteSize = (long) attachmentBytes.length;
         }
@@ -589,7 +590,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
 
     private void authorizeArchiveAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
         if (!securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.WRITE, null)) {
-            throw new SecurityException("missing required sec object (_edoc w)");
+            throw new SecurityException("missing required sec object (_edoc)");
         }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
             throw new SecurityException("not authorized for outbound email archive demographic");
@@ -638,7 +639,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
 
     private void authorizeArchiveReadAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
         if (!securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.READ, null)) {
-            throw new SecurityException("missing required sec object (_edoc r)");
+            throw new SecurityException("missing required sec object (_edoc)");
         }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
             throw new SecurityException("not authorized for outbound email archive demographic");
@@ -654,7 +655,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         boolean canDeleteEdoc = securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)
                 || securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.WRITE, null);
         if (!canDeleteEdoc) {
-            throw new SecurityException("missing required sec object (_admin.edocdelete w or _edoc w)");
+            throw new SecurityException("missing required sec object (_admin.edocdelete or _edoc)");
         }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
             throw new SecurityException("not authorized for outbound email archive demographic");

@@ -359,6 +359,26 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject attachment bytes when attachment exceeds bounded archive size before storing the eDoc")
+    void shouldRejectAttachmentBytes_whenAttachmentExceedsBoundedArchiveSize() {
+        EmailLog emailLog = emailLog();
+        OutboundEmailArchiveDto request = archiveRequest(emailLog);
+        OutboundEmailArchiveAttachmentDto attachmentRequest = new OutboundEmailArchiveAttachmentDto();
+        attachmentRequest.setFileName("message.pdf");
+        attachmentRequest.setContentType("application/pdf");
+        attachmentRequest.setArtifactBytes(new byte[Math.toIntExact(MAX_ARCHIVED_ARTIFACT_BYTES + 1L)]);
+        attachmentRequest.setDocument(attachmentDocument());
+        request.addAttachment(attachmentRequest);
+        when(ctlDocumentDao.findByDocumentNoAndModule(777, "demographic")).thenReturn(List.of(ctlDocument(123, 777)));
+
+        assertThatThrownBy(() -> service.archive(loggedInInfo, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maximum archive size");
+
+        verifyNoInteractions(documentManager);
+    }
+
+    @Test
     @DisplayName("should reject invalid attachment metadata before storing the eDoc")
     void shouldRejectInvalidAttachmentMetadata_beforeStoringEdoc() {
         EmailLog emailLog = emailLog();
@@ -437,7 +457,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
 
         assertThatThrownBy(() -> service.archive(loggedInInfo, request))
                 .isInstanceOf(SecurityException.class)
-                .hasMessageContaining("missing required sec object (_edoc w)");
+                .hasMessageContaining("missing required sec object (_edoc)");
 
         verifyNoInteractions(documentManager);
     }
@@ -468,6 +488,20 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
                 "archiveId=888 documentNo=321",
                 "123",
                 ""));
+    }
+
+    @Test
+    @DisplayName("should reject active archive metadata without patient access")
+    void shouldRejectActiveArchiveMetadata_whenCallerCannotAccessPatientRecord() {
+        OutboundEmailArchive archive = activeArchive();
+        when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
+        when(securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, 123)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getActiveArchive(loggedInInfo, 888))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("archive demographic");
+
+        logActionMock.verifyNoInteractions();
     }
 
     @Test
@@ -561,6 +595,20 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("hash does not match");
+
+        logActionMock.verifyNoInteractions();
+    }
+
+    @Test
+    @DisplayName("should reject archived artifact read without patient access")
+    void shouldRejectArchivedArtifactRead_whenCallerCannotAccessPatientRecord() {
+        OutboundEmailArchive archive = activeArchive();
+        when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
+        when(securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, 123)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.readArchivedArtifact(loggedInInfo, 888))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("archive demographic");
 
         logActionMock.verifyNoInteractions();
     }

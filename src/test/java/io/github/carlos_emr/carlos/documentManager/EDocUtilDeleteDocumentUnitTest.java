@@ -21,9 +21,13 @@
  */
 package io.github.carlos_emr.carlos.documentManager;
 
+import io.github.carlos_emr.carlos.PMmodule.dao.ProviderDao;
+import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
+import io.github.carlos_emr.carlos.commn.model.CtlDocument;
 import io.github.carlos_emr.carlos.commn.model.Document;
+import io.github.carlos_emr.carlos.commn.model.Provider;
 import io.github.carlos_emr.carlos.test.unit.CarlosUnitTestBase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,21 +46,27 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@DisplayName("EDocUtil.deleteDocument")
+@DisplayName("EDocUtil")
 @Tag("unit")
 @Tag("documentManager")
 class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
 
+    private CtlDocumentDao ctlDocumentDao;
     private DocumentDao documentDao;
     private OutboundEmailArchiveDao outboundEmailArchiveDao;
+    private ProviderDao providerDao;
 
     @BeforeEach
     void setUp() throws Exception {
         clearCachedDocumentDao();
+        ctlDocumentDao = mock(CtlDocumentDao.class);
         documentDao = mock(DocumentDao.class);
         outboundEmailArchiveDao = mock(OutboundEmailArchiveDao.class);
+        providerDao = mock(ProviderDao.class);
+        registerMock(CtlDocumentDao.class, ctlDocumentDao);
         registerMock(DocumentDao.class, documentDao);
         registerMock(OutboundEmailArchiveDao.class, outboundEmailArchiveDao);
+        registerMock(ProviderDao.class, providerDao);
     }
 
     @AfterEach
@@ -105,10 +115,46 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         verify(documentDao, never()).merge(any(Document.class));
     }
 
+    @Test
+    @DisplayName("should restore active status when undelete ctl status is empty")
+    void shouldRestoreActiveStatus_whenUndeleteCtlStatusIsEmpty() {
+        Document document = deletedDocument();
+        CtlDocument ctlDocument = new CtlDocument();
+        ctlDocument.setStatus("");
+        when(ctlDocumentDao.getCtrlDocument(321)).thenReturn(ctlDocument);
+        when(documentDao.find((Object) Integer.valueOf(321))).thenReturn(document);
+
+        EDocUtil.undeleteDocument("321");
+
+        assertThat(document.getStatus()).isEqualTo(Document.STATUS_ACTIVE);
+        assertThat(document.getUpdatedatetime()).isNotNull();
+        verify(documentDao).merge(document);
+    }
+
+    @Test
+    @DisplayName("should format provider name when one name part is missing")
+    void shouldFormatProviderName_whenOneNamePartIsMissing() {
+        Provider provider = new Provider();
+        provider.setFirstName("Alex");
+        provider.setLastName(null);
+        when(providerDao.getProvider("12")).thenReturn(provider);
+
+        String name = EDocUtil.getProviderName("12");
+
+        assertThat(name).isEqualTo("ALEX");
+    }
+
     private Document activeDocument() {
         Document document = new Document();
         document.setDocumentNo(321);
         document.setStatus(Document.STATUS_ACTIVE);
+        return document;
+    }
+
+    private Document deletedDocument() {
+        Document document = new Document();
+        document.setDocumentNo(321);
+        document.setStatus(Document.STATUS_DELETED);
         return document;
     }
 

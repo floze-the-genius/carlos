@@ -243,7 +243,7 @@ public final class EDocUtil {
         }
         Provider p = providerDao().getProvider(providerNo);
         if (p != null) {
-            return p.getLastName().toUpperCase() + ", " + p.getFirstName().toUpperCase();
+            return formatUpperLastFirst(p.getLastName(), p.getFirstName());
         }
         return "";
     }
@@ -254,9 +254,21 @@ public final class EDocUtil {
         }
         Demographic d = demographicManager().getDemographic(loggedInInfo, demographicNo);
         if (d != null) {
-            return d.getLastName().toUpperCase() + ", " + d.getFirstName().toUpperCase();
+            return formatUpperLastFirst(d.getLastName(), d.getFirstName());
         }
         return "";
+    }
+
+    private static String formatUpperLastFirst(String lastName, String firstName) {
+        String last = StringUtils.defaultString(lastName).toUpperCase(Locale.ROOT);
+        String first = StringUtils.defaultString(firstName).toUpperCase(Locale.ROOT);
+        if (last.isEmpty()) {
+            return first;
+        }
+        if (first.isEmpty()) {
+            return last;
+        }
+        return last + ", " + first;
     }
 
     public static Provider getProvider(String providerNo) {
@@ -888,17 +900,22 @@ public final class EDocUtil {
 
     public static void undeleteDocument(String documentNo) {
         CtlDocument cd = ctlDocumentDao().getCtrlDocument(ConversionUtils.fromIntString(documentNo));
-        String status = "";
-        if (cd != null) {
-            status = cd.getStatus();
-        }
+        char status = undeleteStatus(cd);
 
         Document d = getDocumentDao().find(ConversionUtils.fromIntString(documentNo));
         if (d != null) {
-            d.setStatus(status.toCharArray()[0]);
+            d.setStatus(status);
             d.setUpdatedatetime(MyDateFormat.getSysDate(getDmsDateTime()));
             getDocumentDao().merge(d);
         }
+    }
+
+    private static char undeleteStatus(CtlDocument cd) {
+        String status = cd == null ? null : cd.getStatus();
+        if (StringUtils.isEmpty(status)) {
+            return Document.STATUS_ACTIVE;
+        }
+        return status.charAt(0);
     }
 
     public static void deleteDocument(String documentNo) {

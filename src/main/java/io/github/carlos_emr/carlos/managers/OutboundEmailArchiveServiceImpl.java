@@ -266,12 +266,12 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         Path archivePath = resolveArchivedArtifactPath(document.getDocfilename());
         byte[] artifactBytes = readArchivedArtifactBytes(archivePath, expectedByteSize);
         validateArchiveHash(expectedSha256Hash, artifactBytes);
-        LogAction.addLog(loggedInInfo,
+        registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.readArchivedArtifact",
                 AUDIT_ARCHIVE_LABEL,
                 auditDetails,
                 auditDemographicNo,
-                "");
+                ""));
         return artifactBytes;
     }
 

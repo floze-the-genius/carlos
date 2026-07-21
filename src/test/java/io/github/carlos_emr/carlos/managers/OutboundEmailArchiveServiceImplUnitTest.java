@@ -456,7 +456,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should return active archive metadata when read access is allowed")
     void shouldReturnActiveArchiveMetadata_whenReadAccessAllowed() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
 
         OutboundEmailArchive result = service.getActiveArchive(loggedInInfo, 888);
@@ -474,7 +474,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @DisplayName("should read archived artifact bytes when read access is allowed")
     void shouldReadArchivedArtifactBytes_whenReadAccessAllowed(@TempDir Path documentDir) throws Exception {
         testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), RFC822_BYTES);
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
@@ -492,10 +492,32 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should defer archived artifact read audit until transaction commit")
+    void shouldDeferArchivedArtifactReadAudit_untilTransactionCommit(@TempDir Path documentDir) throws Exception {
+        TransactionSynchronizationManager.initSynchronization();
+        testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
+        OutboundEmailArchive archive = activeArchive();
+        Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), RFC822_BYTES);
+        when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
+
+        byte[] artifactBytes = service.readArchivedArtifact(loggedInInfo, 888);
+
+        assertThat(artifactBytes).isEqualTo(RFC822_BYTES);
+        logActionMock.verifyNoInteractions();
+        runAfterCommitSynchronizations();
+        logActionMock.verify(() -> LogAction.addLog(loggedInInfo,
+                "OutboundEmailArchiveService.readArchivedArtifact",
+                "Outbound email archive",
+                "archiveId=888 documentNo=321",
+                "123",
+                ""));
+    }
+
+    @Test
     @DisplayName("should reject archived artifact read when file exceeds bounded read size")
     void shouldRejectArchivedArtifactRead_whenFileExceedsBoundedReadSize(@TempDir Path documentDir) throws Exception {
         testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         long oversizedLength = MAX_ARCHIVED_ARTIFACT_BYTES + 1L;
         archive.setByteSize(oversizedLength);
         Path artifact = documentDir.resolve("20260707120000_outbound-email-44.eml");
@@ -515,7 +537,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @DisplayName("should reject archived artifact read when file size differs from archive metadata")
     void shouldRejectArchivedArtifactRead_whenFileSizeDiffersFromMetadata(@TempDir Path documentDir) throws Exception {
         testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), "tampered".getBytes(StandardCharsets.UTF_8));
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
@@ -531,7 +553,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     void shouldRejectArchivedArtifactRead_whenFileHashDiffersFromMetadata(@TempDir Path documentDir) throws Exception {
         testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
         byte[] tamperedBytes = "Subject: Evil\r\n\r\nBody".getBytes(StandardCharsets.UTF_8);
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         archive.setByteSize((long) tamperedBytes.length);
         Files.write(documentDir.resolve("20260707120000_outbound-email-44.eml"), tamperedBytes);
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
@@ -546,7 +568,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject active archive metadata without eDoc read authority")
     void shouldRejectActiveArchiveMetadata_whenCallerLacksEdocReadAuthority() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForRead(888)).thenReturn(archive);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)).thenReturn(false);
 
@@ -558,7 +580,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject reading a controlled-deleted archive")
     void shouldRejectArchivedArtifactRead_whenArchiveIsDeleted() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         archive.markDeleted(PROVIDER_NO, "Patient requested cleanup");
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
@@ -570,7 +592,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject archived artifact read when backing eDoc is deleted")
     void shouldRejectArchivedArtifactRead_whenBackingEdocIsDeleted() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         archive.getDocument().setStatus(Document.STATUS_DELETED);
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
@@ -584,7 +606,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should mark archive deleted and persist tombstone")
     void shouldMarkArchiveDeletedAndPersistTombstone_whenDeletionAllowed() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
         OutboundEmailArchiveDeletion deletion = service.recordControlledDeletion(loggedInInfo, 888, "Patient requested cleanup");
@@ -612,7 +634,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should trim controlled deletion reason before truncating")
     void shouldTrimControlledDeletionReason_beforeTruncating() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
         OutboundEmailArchiveDeletion deletion = service.recordControlledDeletion(loggedInInfo, 888, " ".repeat(1000) + "Meaningful reason");
@@ -625,7 +647,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @DisplayName("should defer controlled deletion audit until transaction commit")
     void shouldDeferControlledDeletionAudit_untilTransactionCommit() {
         TransactionSynchronizationManager.initSynchronization();
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
         service.recordControlledDeletion(loggedInInfo, 888, "Patient requested cleanup");
@@ -643,7 +665,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject controlled deletion without eDoc delete authority")
     void shouldRejectDeletion_whenCallerLacksEdocDeleteAuthority() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)).thenReturn(false);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)).thenReturn(false);
@@ -659,7 +681,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject controlled deletion without patient access")
     void shouldRejectDeletion_whenCallerCannotAccessPatientRecord() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
         when(securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, 123)).thenReturn(false);
 
@@ -674,7 +696,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject controlled deletion while legal hold is active")
     void shouldRejectDeletion_whenLegalHoldIsActive() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         archive.setLegalHold(true);
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
@@ -686,7 +708,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @Test
     @DisplayName("should reject repeated controlled deletion")
     void shouldRejectDeletion_whenArchiveAlreadyDeleted() {
-        OutboundEmailArchive archive = archiveForDeletion();
+        OutboundEmailArchive archive = activeArchive();
         archive.markDeleted(PROVIDER_NO, "previous cleanup");
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
 
@@ -711,7 +733,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
 
     private void runAfterCommitSynchronizations() {
         List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
-        assertThat(synchronizations).isNotEmpty();
+        assertThat(synchronizations).isNotNull().isNotEmpty();
         for (TransactionSynchronization synchronization : synchronizations) {
             synchronization.afterCommit();
         }
@@ -781,7 +803,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         return ctlDocument;
     }
 
-    private OutboundEmailArchive archiveForDeletion() {
+    private OutboundEmailArchive activeArchive() {
         OutboundEmailArchive archive = new OutboundEmailArchive();
         archive.setId(888);
         archive.setEmailLog(emailLog());

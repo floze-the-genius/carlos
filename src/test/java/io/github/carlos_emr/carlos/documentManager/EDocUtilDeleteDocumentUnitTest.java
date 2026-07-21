@@ -166,6 +166,20 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         assertThat(name).isEqualTo("(Lex)");
     }
 
+    @Test
+    @DisplayName("should return N/A when demographic name and alias are missing")
+    void shouldReturnNotAvailable_whenDemographicNameAndAliasAreMissing() {
+        Demographic demographic = new Demographic(123);
+        demographic.setFirstName(" ");
+        demographic.setLastName(null);
+        demographic.setAlias(" ");
+        when(demographicManager.getDemographic(loggedInInfo, "123")).thenReturn(demographic);
+
+        String name = EDocUtil.getDemographicName(loggedInInfo, "123");
+
+        assertThat(name).isEqualTo("N/A");
+    }
+
     private Document activeDocument() {
         Document document = new Document();
         document.setDocumentNo(321);

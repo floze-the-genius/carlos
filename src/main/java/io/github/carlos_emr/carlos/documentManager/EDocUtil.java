@@ -260,8 +260,8 @@ public final class EDocUtil {
     }
 
     private static String formatUpperLastFirst(String lastName, String firstName) {
-        String last = StringUtils.defaultString(lastName).toUpperCase(Locale.ROOT);
-        String first = StringUtils.defaultString(firstName).toUpperCase(Locale.ROOT);
+        String last = StringUtils.trimToEmpty(lastName).toUpperCase(Locale.ROOT);
+        String first = StringUtils.trimToEmpty(firstName).toUpperCase(Locale.ROOT);
         if (last.isEmpty()) {
             return first;
         }
@@ -274,6 +274,9 @@ public final class EDocUtil {
     private static String formatUpperLastFirstWithAlias(String lastName, String firstName, String alias) {
         String name = formatUpperLastFirst(lastName, firstName);
         String trimmedAlias = StringUtils.trimToEmpty(alias);
+        if (name.isEmpty() && trimmedAlias.isEmpty()) {
+            return "N/A";
+        }
         if (trimmedAlias.isEmpty()) {
             return name;
         }

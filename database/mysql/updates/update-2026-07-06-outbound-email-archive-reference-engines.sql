@@ -15,65 +15,94 @@
 -- If any row reports a non-InnoDB engine, this migration will rebuild that
 -- table. Schedule the update accordingly on large legacy databases.
 
-DROP PROCEDURE IF EXISTS assert_outbound_archive_reference_tables_exist;
-DELIMITER //
-CREATE PROCEDURE assert_outbound_archive_reference_tables_exist()
-BEGIN
-  IF EXISTS (
-    SELECT 1
-      FROM (
-        SELECT 'document' AS table_name
-        UNION ALL SELECT 'emailConfig'
-        UNION ALL SELECT 'emailLog'
-      ) required_reference_tables
-      LEFT JOIN information_schema.TABLES actual_tables
-        ON actual_tables.TABLE_SCHEMA = DATABASE()
-       AND actual_tables.TABLE_NAME = required_reference_tables.table_name
-       AND actual_tables.TABLE_TYPE = 'BASE TABLE'
-     WHERE actual_tables.TABLE_NAME IS NULL
-  ) THEN
-    SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Missing required outbound archive reference table';
-  END IF;
-END //
-DELIMITER ;
+SET @missing_outbound_archive_reference_table = NULL;
+SELECT required_reference_tables.table_name
+  INTO @missing_outbound_archive_reference_table
+  FROM (
+    SELECT 1 AS sort_order, 'document' AS table_name
+    UNION ALL SELECT 2, 'emailConfig'
+    UNION ALL SELECT 3, 'emailLog'
+  ) required_reference_tables
+  LEFT JOIN information_schema.TABLES actual_tables
+    ON actual_tables.TABLE_SCHEMA = DATABASE()
+   AND actual_tables.TABLE_NAME = required_reference_tables.table_name
+   AND actual_tables.TABLE_TYPE = 'BASE TABLE'
+ WHERE actual_tables.TABLE_NAME IS NULL
+ ORDER BY required_reference_tables.sort_order
+ LIMIT 1;
 
-CALL assert_outbound_archive_reference_tables_exist();
-DROP PROCEDURE IF EXISTS assert_outbound_archive_reference_tables_exist;
+-- Fail before any engine conversion if a required table is missing. This keeps
+-- the migration free of persistent helper routines, so failed upgrades do not
+-- leave temporary procedures behind.
+SET @outbound_archive_reference_engine_sql = IF(
+  @missing_outbound_archive_reference_table IS NULL,
+  'SELECT ''outbound archive reference tables exist'' AS message',
+  CONCAT(
+    'ALTER TABLE `',
+    REPLACE(@missing_outbound_archive_reference_table, '`', '``'),
+    '` ENGINE=InnoDB'
+  )
+);
+PREPARE outbound_archive_reference_engine_stmt FROM @outbound_archive_reference_engine_sql;
+EXECUTE outbound_archive_reference_engine_stmt;
+DEALLOCATE PREPARE outbound_archive_reference_engine_stmt;
 
-DROP PROCEDURE IF EXISTS convert_table_to_innodb_if_needed;
-DELIMITER //
-CREATE PROCEDURE convert_table_to_innodb_if_needed(IN target_table VARCHAR(64))
-BEGIN
-  DECLARE current_engine VARCHAR(64);
+SET @document_engine = NULL;
+SELECT `ENGINE`
+  INTO @document_engine
+  FROM information_schema.TABLES
+ WHERE TABLE_SCHEMA = DATABASE()
+   AND TABLE_NAME = 'document'
+   AND TABLE_TYPE = 'BASE TABLE'
+ LIMIT 1;
 
-  SELECT `ENGINE`
-    INTO current_engine
-    FROM information_schema.TABLES
-   WHERE TABLE_SCHEMA = DATABASE()
-     AND TABLE_NAME = target_table
-     AND TABLE_TYPE = 'BASE TABLE'
-   LIMIT 1;
+SET @outbound_archive_reference_engine_sql = IF(
+  @document_engine IS NULL OR UPPER(@document_engine) <> 'INNODB',
+  'ALTER TABLE `document` ENGINE=InnoDB',
+  'SELECT ''document already InnoDB'' AS message'
+);
+PREPARE outbound_archive_reference_engine_stmt FROM @outbound_archive_reference_engine_sql;
+EXECUTE outbound_archive_reference_engine_stmt;
+DEALLOCATE PREPARE outbound_archive_reference_engine_stmt;
 
-  IF current_engine IS NULL THEN
-    SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Missing required outbound archive reference table';
-  ELSEIF UPPER(current_engine) <> 'INNODB' THEN
-    SET @convert_table_to_innodb_sql = CONCAT(
-      'ALTER TABLE `',
-      REPLACE(target_table, '`', '``'),
-      '` ENGINE=InnoDB'
-    );
-    PREPARE convert_table_to_innodb_stmt FROM @convert_table_to_innodb_sql;
-    EXECUTE convert_table_to_innodb_stmt;
-    DEALLOCATE PREPARE convert_table_to_innodb_stmt;
-  END IF;
-END //
-DELIMITER ;
+SET @email_config_engine = NULL;
+SELECT `ENGINE`
+  INTO @email_config_engine
+  FROM information_schema.TABLES
+ WHERE TABLE_SCHEMA = DATABASE()
+   AND TABLE_NAME = 'emailConfig'
+   AND TABLE_TYPE = 'BASE TABLE'
+ LIMIT 1;
 
-CALL convert_table_to_innodb_if_needed('document');
-CALL convert_table_to_innodb_if_needed('emailConfig');
-CALL convert_table_to_innodb_if_needed('emailLog');
+SET @outbound_archive_reference_engine_sql = IF(
+  @email_config_engine IS NULL OR UPPER(@email_config_engine) <> 'INNODB',
+  'ALTER TABLE `emailConfig` ENGINE=InnoDB',
+  'SELECT ''emailConfig already InnoDB'' AS message'
+);
+PREPARE outbound_archive_reference_engine_stmt FROM @outbound_archive_reference_engine_sql;
+EXECUTE outbound_archive_reference_engine_stmt;
+DEALLOCATE PREPARE outbound_archive_reference_engine_stmt;
 
-DROP PROCEDURE IF EXISTS convert_table_to_innodb_if_needed;
-SET @convert_table_to_innodb_sql = NULL;
+SET @email_log_engine = NULL;
+SELECT `ENGINE`
+  INTO @email_log_engine
+  FROM information_schema.TABLES
+ WHERE TABLE_SCHEMA = DATABASE()
+   AND TABLE_NAME = 'emailLog'
+   AND TABLE_TYPE = 'BASE TABLE'
+ LIMIT 1;
+
+SET @outbound_archive_reference_engine_sql = IF(
+  @email_log_engine IS NULL OR UPPER(@email_log_engine) <> 'INNODB',
+  'ALTER TABLE `emailLog` ENGINE=InnoDB',
+  'SELECT ''emailLog already InnoDB'' AS message'
+);
+PREPARE outbound_archive_reference_engine_stmt FROM @outbound_archive_reference_engine_sql;
+EXECUTE outbound_archive_reference_engine_stmt;
+DEALLOCATE PREPARE outbound_archive_reference_engine_stmt;
+
+SET @missing_outbound_archive_reference_table = NULL;
+SET @outbound_archive_reference_engine_sql = NULL;
+SET @document_engine = NULL;
+SET @email_config_engine = NULL;
+SET @email_log_engine = NULL;

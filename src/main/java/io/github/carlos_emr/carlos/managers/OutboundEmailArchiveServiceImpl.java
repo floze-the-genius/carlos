@@ -44,7 +44,6 @@ import io.github.carlos_emr.carlos.utility.MiscUtils;
 import io.github.carlos_emr.carlos.utility.PathValidationUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -248,9 +247,9 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     @Override
-    @Transactional(propagation = Propagation.NOT_SUPPORTED, noRollbackFor = IOException.class)
+    @Transactional(noRollbackFor = IOException.class)
     public byte[] readArchivedArtifact(LoggedInInfo loggedInInfo, Integer archiveId) throws IOException {
-        OutboundEmailArchive archive = loadActiveArchiveForRead(loggedInInfo, archiveId);
+        OutboundEmailArchive archive = loadActiveArchiveForArtifactRead(loggedInInfo, archiveId);
         Document document = archive.getDocument();
         if (document == null || document.getDocfilename() == null || document.getDocfilename().isBlank()) {
             throw new IllegalStateException("Outbound email archive document is required");
@@ -588,19 +587,32 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private void authorizeArchiveAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
+        if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)) {
+            throw new SecurityException("missing required sec object (_edoc w)");
+        }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
             throw new SecurityException("not authorized for outbound email archive demographic");
         }
     }
 
+    private OutboundEmailArchive loadActiveArchiveForArtifactRead(LoggedInInfo loggedInInfo, Integer archiveId) {
+        return loadActiveArchiveForRead(loggedInInfo, archiveId, true);
+    }
+
     private OutboundEmailArchive loadActiveArchiveForRead(LoggedInInfo loggedInInfo, Integer archiveId) {
+        return loadActiveArchiveForRead(loggedInInfo, archiveId, false);
+    }
+
+    private OutboundEmailArchive loadActiveArchiveForRead(LoggedInInfo loggedInInfo, Integer archiveId, boolean lockForUpdate) {
         if (loggedInInfo == null) {
             throw new IllegalArgumentException("Logged-in user context is required");
         }
         if (archiveId == null) {
             throw new IllegalArgumentException("Archive ID is required");
         }
-        OutboundEmailArchive archive = outboundEmailArchiveDao.findForRead(archiveId);
+        OutboundEmailArchive archive = lockForUpdate
+                ? outboundEmailArchiveDao.findForUpdate(archiveId)
+                : outboundEmailArchiveDao.findForRead(archiveId);
         if (archive == null) {
             throw new IllegalArgumentException("Outbound email archive not found: " + archiveId);
         }

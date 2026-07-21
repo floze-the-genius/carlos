@@ -254,7 +254,7 @@ public final class EDocUtil {
         }
         Demographic d = demographicManager().getDemographic(loggedInInfo, demographicNo);
         if (d != null) {
-            return formatUpperLastFirst(d.getLastName(), d.getFirstName());
+            return formatUpperLastFirstWithAlias(d.getLastName(), d.getFirstName(), d.getAlias());
         }
         return "";
     }
@@ -269,6 +269,18 @@ public final class EDocUtil {
             return last;
         }
         return last + ", " + first;
+    }
+
+    private static String formatUpperLastFirstWithAlias(String lastName, String firstName, String alias) {
+        String name = formatUpperLastFirst(lastName, firstName);
+        String trimmedAlias = StringUtils.trimToEmpty(alias);
+        if (trimmedAlias.isEmpty()) {
+            return name;
+        }
+        if (name.isEmpty()) {
+            return "(" + trimmedAlias + ")";
+        }
+        return name + " (" + trimmedAlias + ")";
     }
 
     public static Provider getProvider(String providerNo) {
@@ -912,7 +924,7 @@ public final class EDocUtil {
 
     private static char undeleteStatus(CtlDocument cd) {
         String status = cd == null ? null : cd.getStatus();
-        if (StringUtils.isEmpty(status)) {
+        if (status == null || status.isEmpty()) {
             return Document.STATUS_ACTIVE;
         }
         return status.charAt(0);

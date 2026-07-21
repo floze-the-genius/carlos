@@ -26,9 +26,12 @@ import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
 import io.github.carlos_emr.carlos.commn.model.CtlDocument;
+import io.github.carlos_emr.carlos.commn.model.Demographic;
 import io.github.carlos_emr.carlos.commn.model.Document;
 import io.github.carlos_emr.carlos.commn.model.Provider;
+import io.github.carlos_emr.carlos.managers.DemographicManager;
 import io.github.carlos_emr.carlos.test.unit.CarlosUnitTestBase;
+import io.github.carlos_emr.carlos.utility.LoggedInInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,7 +55,9 @@ import static org.mockito.Mockito.when;
 class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
 
     private CtlDocumentDao ctlDocumentDao;
+    private DemographicManager demographicManager;
     private DocumentDao documentDao;
+    private LoggedInInfo loggedInInfo;
     private OutboundEmailArchiveDao outboundEmailArchiveDao;
     private ProviderDao providerDao;
 
@@ -60,10 +65,13 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     void setUp() throws Exception {
         clearCachedDocumentDao();
         ctlDocumentDao = mock(CtlDocumentDao.class);
+        demographicManager = mock(DemographicManager.class);
         documentDao = mock(DocumentDao.class);
+        loggedInInfo = mock(LoggedInInfo.class);
         outboundEmailArchiveDao = mock(OutboundEmailArchiveDao.class);
         providerDao = mock(ProviderDao.class);
         registerMock(CtlDocumentDao.class, ctlDocumentDao);
+        registerMock(DemographicManager.class, demographicManager);
         registerMock(DocumentDao.class, documentDao);
         registerMock(OutboundEmailArchiveDao.class, outboundEmailArchiveDao);
         registerMock(ProviderDao.class, providerDao);
@@ -142,6 +150,20 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         String name = EDocUtil.getProviderName("12");
 
         assertThat(name).isEqualTo("ALEX");
+    }
+
+    @Test
+    @DisplayName("should include alias when demographic name parts are missing")
+    void shouldIncludeAlias_whenDemographicNamePartsAreMissing() {
+        Demographic demographic = new Demographic(123);
+        demographic.setFirstName(null);
+        demographic.setLastName(null);
+        demographic.setAlias("Lex");
+        when(demographicManager.getDemographic(loggedInInfo, "123")).thenReturn(demographic);
+
+        String name = EDocUtil.getDemographicName(loggedInInfo, "123");
+
+        assertThat(name).isEqualTo("(Lex)");
     }
 
     private Document activeDocument() {

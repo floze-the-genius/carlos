@@ -84,7 +84,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     private static final String DOCUMENT_SOURCE = "Outbound Email Archive";
     private static final String EDOC_SECURITY_OBJECT = "_edoc";
     private static final String CTL_DOCUMENT_MODULE_DEMOGRAPHIC = "demographic";
-    private static final long MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
+    private static final long DEFAULT_MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
 
     private final DocumentManager documentManager;
 
@@ -100,6 +100,8 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
 
     private final Properties carlosProperties;
 
+    private final long maxArchivedArtifactBytes;
+
     @Autowired
     public OutboundEmailArchiveServiceImpl(
             DocumentManager documentManager,
@@ -114,7 +116,8 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
                 outboundEmailArchiveDeletionDao,
                 ctlDocumentDao,
                 securityInfoManager,
-                CarlosProperties.getInstance());
+                CarlosProperties.getInstance(),
+                DEFAULT_MAX_ARCHIVED_ARTIFACT_BYTES);
     }
 
     OutboundEmailArchiveServiceImpl(
@@ -125,6 +128,25 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             CtlDocumentDao ctlDocumentDao,
             SecurityInfoManager securityInfoManager,
             Properties carlosProperties) {
+        this(documentManager,
+                emailLogDao,
+                outboundEmailArchiveDao,
+                outboundEmailArchiveDeletionDao,
+                ctlDocumentDao,
+                securityInfoManager,
+                carlosProperties,
+                DEFAULT_MAX_ARCHIVED_ARTIFACT_BYTES);
+    }
+
+    OutboundEmailArchiveServiceImpl(
+            DocumentManager documentManager,
+            EmailLogDao emailLogDao,
+            OutboundEmailArchiveDao outboundEmailArchiveDao,
+            OutboundEmailArchiveDeletionDao outboundEmailArchiveDeletionDao,
+            CtlDocumentDao ctlDocumentDao,
+            SecurityInfoManager securityInfoManager,
+            Properties carlosProperties,
+            long maxArchivedArtifactBytes) {
         this.documentManager = documentManager;
         this.emailLogDao = emailLogDao;
         this.outboundEmailArchiveDao = outboundEmailArchiveDao;
@@ -132,6 +154,10 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         this.ctlDocumentDao = ctlDocumentDao;
         this.securityInfoManager = securityInfoManager;
         this.carlosProperties = Objects.requireNonNull(carlosProperties, "carlosProperties");
+        if (maxArchivedArtifactBytes < 1L) {
+            throw new IllegalArgumentException("maxArchivedArtifactBytes must be positive");
+        }
+        this.maxArchivedArtifactBytes = maxArchivedArtifactBytes;
     }
 
     @SuppressWarnings("java:S6206") // A record would generate byte[] identity-based equals/hashCode/toString for artifactBytes.
@@ -334,9 +360,9 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private void validateArchiveRequestArtifactSize(long byteSize) {
-        if (byteSize > MAX_ARCHIVED_ARTIFACT_BYTES) {
+        if (byteSize > maxArchivedArtifactBytes) {
             throw new IllegalArgumentException("Outbound artifact exceeds maximum archive size of "
-                    + MAX_ARCHIVED_ARTIFACT_BYTES + " bytes");
+                    + maxArchivedArtifactBytes + " bytes");
         }
     }
 
@@ -718,9 +744,9 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
                 totalBytes += bytesRead;
-                if (totalBytes > MAX_ARCHIVED_ARTIFACT_BYTES) {
+                if (totalBytes > maxArchivedArtifactBytes) {
                     throw new IOException(
-                            "Archived artifact exceeds maximum read size of " + MAX_ARCHIVED_ARTIFACT_BYTES + " bytes");
+                            "Archived artifact exceeds maximum read size of " + maxArchivedArtifactBytes + " bytes");
                 }
                 outputStream.write(buffer, 0, bytesRead);
             }
@@ -735,9 +761,9 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         if (byteSize < 0) {
             throw new IOException("Archived artifact size is invalid");
         }
-        if (byteSize > MAX_ARCHIVED_ARTIFACT_BYTES) {
+        if (byteSize > maxArchivedArtifactBytes) {
             throw new IOException("Archived artifact exceeds maximum read size of "
-                    + MAX_ARCHIVED_ARTIFACT_BYTES + " bytes");
+                    + maxArchivedArtifactBytes + " bytes");
         }
     }
 

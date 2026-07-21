@@ -78,7 +78,7 @@ import static org.mockito.Mockito.when;
 class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
 
     private static final String PROVIDER_NO = "999998";
-    private static final long MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
+    private static final long TEST_MAX_ARCHIVED_ARTIFACT_BYTES = 64L;
     private static final byte[] RFC822_BYTES = "Subject: Test\r\n\r\nBody".getBytes(StandardCharsets.UTF_8);
 
     private DocumentManager documentManager;
@@ -108,7 +108,8 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
                 outboundEmailArchiveDeletionDao,
                 ctlDocumentDao,
                 securityInfoManager,
-                testProperties);
+                testProperties,
+                TEST_MAX_ARCHIVED_ARTIFACT_BYTES);
 
         when(loggedInInfo.getLoggedInProviderNo()).thenReturn(PROVIDER_NO);
         allowControlledDeletion();
@@ -366,7 +367,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         OutboundEmailArchiveAttachmentDto attachmentRequest = new OutboundEmailArchiveAttachmentDto();
         attachmentRequest.setFileName("message.pdf");
         attachmentRequest.setContentType("application/pdf");
-        attachmentRequest.setArtifactBytes(new byte[Math.toIntExact(MAX_ARCHIVED_ARTIFACT_BYTES + 1L)]);
+        attachmentRequest.setArtifactBytes(new byte[Math.toIntExact(TEST_MAX_ARCHIVED_ARTIFACT_BYTES + 1L)]);
         attachmentRequest.setDocument(attachmentDocument());
         request.addAttachment(attachmentRequest);
         when(ctlDocumentDao.findByDocumentNoAndModule(777, "demographic")).thenReturn(List.of(ctlDocument(123, 777)));
@@ -412,7 +413,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     @DisplayName("should reject archive when artifact exceeds bounded archive size before storing the eDoc")
     void shouldRejectArchive_whenArtifactExceedsBoundedArchiveSize() {
         OutboundEmailArchiveDto request = archiveRequest(emailLog());
-        injectDependency(request, "artifactBytes", new byte[Math.toIntExact(MAX_ARCHIVED_ARTIFACT_BYTES + 1L)]);
+        injectDependency(request, "artifactBytes", new byte[Math.toIntExact(TEST_MAX_ARCHIVED_ARTIFACT_BYTES + 1L)]);
 
         assertThatThrownBy(() -> service.archive(loggedInInfo, request))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -552,7 +553,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     void shouldRejectArchivedArtifactRead_whenFileExceedsBoundedReadSize(@TempDir Path documentDir) throws Exception {
         testProperties.setProperty("DOCUMENT_DIR", documentDir.toString());
         OutboundEmailArchive archive = activeArchive();
-        long oversizedLength = MAX_ARCHIVED_ARTIFACT_BYTES + 1L;
+        long oversizedLength = TEST_MAX_ARCHIVED_ARTIFACT_BYTES + 1L;
         archive.setByteSize(oversizedLength);
         Path artifact = documentDir.resolve("20260707120000_outbound-email-44.eml");
         try (RandomAccessFile randomAccessFile = new RandomAccessFile(artifact.toFile(), "rw")) {

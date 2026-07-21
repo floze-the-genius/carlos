@@ -15,6 +15,32 @@
 -- If any row reports a non-InnoDB engine, this migration will rebuild that
 -- table. Schedule the update accordingly on large legacy databases.
 
+DROP PROCEDURE IF EXISTS assert_outbound_archive_reference_tables_exist;
+DELIMITER //
+CREATE PROCEDURE assert_outbound_archive_reference_tables_exist()
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM (
+        SELECT 'document' AS table_name
+        UNION ALL SELECT 'emailConfig'
+        UNION ALL SELECT 'emailLog'
+      ) required_reference_tables
+      LEFT JOIN information_schema.TABLES actual_tables
+        ON actual_tables.TABLE_SCHEMA = DATABASE()
+       AND actual_tables.TABLE_NAME = required_reference_tables.table_name
+       AND actual_tables.TABLE_TYPE = 'BASE TABLE'
+     WHERE actual_tables.TABLE_NAME IS NULL
+  ) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Missing required outbound archive reference table';
+  END IF;
+END //
+DELIMITER ;
+
+CALL assert_outbound_archive_reference_tables_exist();
+DROP PROCEDURE IF EXISTS assert_outbound_archive_reference_tables_exist;
+
 DROP PROCEDURE IF EXISTS convert_table_to_innodb_if_needed;
 DELIMITER //
 CREATE PROCEDURE convert_table_to_innodb_if_needed(IN target_table VARCHAR(64))

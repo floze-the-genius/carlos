@@ -82,6 +82,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     private static final String DOCUMENT_DIR_PROPERTY = "DOCUMENT_DIR";
     private static final String DOCUMENT_DOCTYPE = "email";
     private static final String DOCUMENT_SOURCE = "Outbound Email Archive";
+    private static final String EDOC_SECURITY_OBJECT = "_edoc";
     private static final String CTL_DOCUMENT_MODULE_DEMOGRAPHIC = "demographic";
     private static final long MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
 
@@ -587,7 +588,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private void authorizeArchiveAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
-        if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)) {
+        if (!securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.WRITE, null)) {
             throw new SecurityException("missing required sec object (_edoc w)");
         }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
@@ -636,7 +637,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     }
 
     private void authorizeArchiveReadAccess(LoggedInInfo loggedInInfo, Integer demographicNo) {
-        if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)) {
+        if (!securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.READ, null)) {
             throw new SecurityException("missing required sec object (_edoc r)");
         }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
@@ -651,7 +652,7 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         }
 
         boolean canDeleteEdoc = securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)
-                || securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null);
+                || securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.WRITE, null);
         if (!canDeleteEdoc) {
             throw new SecurityException("missing required sec object (_admin.edocdelete w or _edoc w)");
         }

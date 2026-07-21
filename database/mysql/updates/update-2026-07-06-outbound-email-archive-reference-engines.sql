@@ -37,11 +37,7 @@ SELECT required_reference_tables.table_name
 SET @outbound_archive_reference_engine_sql = IF(
   @missing_outbound_archive_reference_table IS NULL,
   'SELECT ''outbound archive reference tables exist'' AS message',
-  CONCAT(
-    'ALTER TABLE `',
-    REPLACE(@missing_outbound_archive_reference_table, '`', '``'),
-    '` ENGINE=InnoDB'
-  )
+  'SELECT 1 FROM `missing_required_outbound_archive_reference_table`'
 );
 PREPARE outbound_archive_reference_engine_stmt FROM @outbound_archive_reference_engine_sql;
 EXECUTE outbound_archive_reference_engine_stmt;

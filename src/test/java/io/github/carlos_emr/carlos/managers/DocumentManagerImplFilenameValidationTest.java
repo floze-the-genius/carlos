@@ -5,6 +5,7 @@ import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
 import io.github.carlos_emr.carlos.commn.dao.PatientLabRoutingDao;
+import io.github.carlos_emr.carlos.commn.dao.ProviderInboxRoutingDao;
 import io.github.carlos_emr.carlos.commn.dao.ProviderLabRoutingDao;
 import io.github.carlos_emr.carlos.commn.dao.QueueDocumentLinkDao;
 import io.github.carlos_emr.carlos.commn.model.CtlDocument;
@@ -37,6 +38,8 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @DisplayName("DocumentManagerImpl filename validation")
@@ -51,6 +54,7 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
     private CtlDocumentDao ctlDocumentDao;
     private OutboundEmailArchiveDao outboundEmailArchiveDao;
     private PatientLabRoutingDao patientLabRoutingDao;
+    private ProviderInboxRoutingDao providerInboxRoutingDao;
     private ProviderLabRoutingDao providerLabRoutingDao;
     private QueueDocumentLinkDao queueDocumentLinkDao;
     private LoggedInInfo loggedInInfo;
@@ -65,6 +69,7 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
         ctlDocumentDao = mock(CtlDocumentDao.class);
         outboundEmailArchiveDao = mock(OutboundEmailArchiveDao.class);
         patientLabRoutingDao = mock(PatientLabRoutingDao.class);
+        providerInboxRoutingDao = mock(ProviderInboxRoutingDao.class);
         providerLabRoutingDao = mock(ProviderLabRoutingDao.class);
         queueDocumentLinkDao = mock(QueueDocumentLinkDao.class);
         loggedInInfo = mock(LoggedInInfo.class);
@@ -151,6 +156,20 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
         assertThatThrownBy(() -> manager.getDocument(loggedInInfo, 321))
                 .isInstanceOf(SecurityException.class)
                 .hasMessageContaining("outbound email archive workflow");
+    }
+
+    @Test
+    @DisplayName("should reject control-document reads for outbound archive backing eDocs")
+    void shouldRejectGetCtlDocument_whenDocumentBacksOutboundArchive() {
+        DocumentManagerImpl manager = newDocumentManager();
+        when(securityInfoManager.hasPrivilege(eq(loggedInInfo), eq("_edoc"), eq("r"), eq("")))
+                .thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> manager.getCtlDocumentByDocumentId(loggedInInfo, 321))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("outbound email archive workflow");
+        verify(ctlDocumentDao, never()).getCtrlDocument(321);
     }
 
     @Test
@@ -268,6 +287,18 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
                 .hasMessageContaining("outbound email archive workflow");
     }
 
+    @Test
+    @DisplayName("should reject acknowledgement-provider reads for outbound archive backing eDocs")
+    void shouldRejectAcknowledgedProviders_whenDocumentBacksOutboundArchive() {
+        DocumentManagerImpl manager = newDocumentManager();
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> manager.getProvidersThatHaveAcknowledgedDocument(loggedInInfo, 321))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("outbound email archive workflow");
+        verify(providerInboxRoutingDao, never()).getProvidersWithRoutingForDocument(anyString(), eq(321));
+    }
+
     private Document document(Integer documentNo) {
         Document document = new Document();
         document.setDocumentNo(documentNo);
@@ -294,6 +325,7 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
         injectDependency(manager, "ctlDocumentDao", ctlDocumentDao);
         injectDependency(manager, "outboundEmailArchiveDao", outboundEmailArchiveDao);
         injectDependency(manager, "patientLabRoutingDao", patientLabRoutingDao);
+        injectDependency(manager, "providerInboxRoutingDao", providerInboxRoutingDao);
         injectDependency(manager, "providerLabRoutingDao", providerLabRoutingDao);
         injectDependency(manager, "queueDocumentLinkDAO", queueDocumentLinkDao);
         return manager;

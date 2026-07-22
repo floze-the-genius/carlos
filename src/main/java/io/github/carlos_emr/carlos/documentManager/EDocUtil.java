@@ -395,7 +395,9 @@ public final class EDocUtil {
     }
 
     public static void detachDocConsult(String docNo, String consultId) {
-        List<ConsultDocs> consultDocs = getConsultDocsDao().findByRequestIdDocNoDocType(ConversionUtils.fromIntString(consultId), ConversionUtils.fromIntString(docNo), ConsultDocs.DOCTYPE_DOC);
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(docNo);
+        assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        List<ConsultDocs> consultDocs = getConsultDocsDao().findByRequestIdDocNoDocType(ConversionUtils.fromIntString(consultId), parsedDocumentNo, ConsultDocs.DOCTYPE_DOC);
         for (ConsultDocs consultDoc : consultDocs) {
             consultDoc.setDeleted("Y");
             getConsultDocsDao().merge(consultDoc);
@@ -403,7 +405,9 @@ public final class EDocUtil {
     }
 
     public static void detachDocEForm(String docNo, String consultId) {
-        List<EFormDocs> eformDocs = getEformDocsDao().findByFdidIdDocNoDocType(ConversionUtils.fromIntString(consultId), ConversionUtils.fromIntString(docNo), EFormDocs.DOCTYPE_DOC);
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(docNo);
+        assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        List<EFormDocs> eformDocs = getEformDocsDao().findByFdidIdDocNoDocType(ConversionUtils.fromIntString(consultId), parsedDocumentNo, EFormDocs.DOCTYPE_DOC);
         for (EFormDocs eformDoc : eformDocs) {
             eformDoc.setDeleted("Y");
             getEformDocsDao().merge(eformDoc);
@@ -1002,7 +1006,7 @@ public final class EDocUtil {
     }
 
     private static boolean isOutboundEmailArchiveDocumentNo(Integer documentNo) {
-        return outboundEmailArchiveDao().existsByDocumentNo(documentNo);
+        return documentNo != null && outboundEmailArchiveDao().existsByDocumentNo(documentNo);
     }
 
     private static boolean isOutboundEmailArchiveFileName(String fileName) {
@@ -1143,7 +1147,7 @@ public final class EDocUtil {
         String docNumber = EDocUtil.getLastDocumentNo();
         DocumentDao dao = SpringUtils.getBean(DocumentDao.class);
         Document d = dao.find(ConversionUtils.fromIntString(docNumber));
-        if (d != null) {
+        if (d != null && !isOutboundEmailArchiveDocument(d)) {
             return d.getDocdesc();
         }
         return null;
@@ -1236,7 +1240,9 @@ public final class EDocUtil {
     }
 
     public static void subtractOnePage(String docId) {
-        Document doc = getDocumentDao().find(ConversionUtils.fromIntString(docId));
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(docId);
+        assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        Document doc = getDocumentDao().find(parsedDocumentNo);
         doc.setNumberofpages(doc.getNumberofpages() - 1);
 
         getDocumentDao().merge(doc);
@@ -1244,6 +1250,7 @@ public final class EDocUtil {
 
     public static String getHtmlTicklers(LoggedInInfo loggedInInfo, String docId) {
 
+        assertNotOutboundEmailArchiveDocument(ConversionUtils.fromIntString(docId));
         Long table_id = Long.valueOf(docId);
         List<TicklerLink> linkList = ticklerLinkDao().getLinkByTableId("DOC", table_id);
         String HtmlTickler = "";
@@ -1261,6 +1268,7 @@ public final class EDocUtil {
 
     public static String getHtmlAcknowledgement(Locale locale, String docId) {
 
+        assertNotOutboundEmailArchiveDocument(ConversionUtils.fromIntString(docId));
         ArrayList<ReportStatus> ackList = AcknowledgementData.getAcknowledgements("DOC", docId);
         String HtmlAcknowledgement = "";
         String comment = "";
@@ -1293,6 +1301,7 @@ public final class EDocUtil {
 
     public static String getHtmlAnnotation(String docId) {
 
+        assertNotOutboundEmailArchiveDocument(ConversionUtils.fromIntString(docId));
         Long tableId = 0L;
         String note = "";
 
@@ -1352,7 +1361,9 @@ public final class EDocUtil {
         File documentDir = PathValidationUtils.resolveConfiguredDirectory(
                 CarlosProperties.getInstance().getProperty("DOCUMENT_DIR"), "DOCUMENT_DIR");
         try {
-            return PathValidationUtils.validateExistingPath(resolvedFile, documentDir);
+            File documentFile = PathValidationUtils.validateExistingPath(resolvedFile, documentDir);
+            assertNotOutboundEmailArchiveFileName(documentFile.getName());
+            return documentFile;
         } catch (SecurityException e) {
             if (PathValidationUtils.isInAllowedTempDirectory(resolvedFile)) {
                 return PathValidationUtils.resolveTrustedPath(resolvedFile);

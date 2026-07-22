@@ -43,10 +43,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -72,6 +76,9 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     private ProgramManager2 programManager2;
     private ProviderDao providerDao;
     private String previousFilterOnFacility;
+
+    @TempDir
+    Path tempDir;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -249,6 +256,97 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
                 .hasMessageContaining("controlled archive workflow");
 
         verify(eFormDocsDao, never()).persist(any(EFormDocs.class));
+    }
+
+    @Test
+    @DisplayName("should reject consult detach when document backs an outbound email archive")
+    void shouldRejectConsultDetach_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.detachDocConsult("321", "456"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verifyNoInteractions(consultDocsDao);
+    }
+
+    @Test
+    @DisplayName("should reject eForm detach when document backs an outbound email archive")
+    void shouldRejectEFormDetach_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.detachDocEForm("321", "456"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verifyNoInteractions(eFormDocsDao);
+    }
+
+    @Test
+    @DisplayName("should reject page-count mutation when document backs an outbound email archive")
+    void shouldRejectSubtractOnePage_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.subtractOnePage("321"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(documentDao, never()).find(any());
+        verify(documentDao, never()).merge(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("should reject tickler HTML reads when document backs an outbound email archive")
+    void shouldRejectHtmlTicklers_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.getHtmlTicklers(loggedInInfo, "321"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+    }
+
+    @Test
+    @DisplayName("should reject acknowledgement HTML reads when document backs an outbound email archive")
+    void shouldRejectHtmlAcknowledgement_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.getHtmlAcknowledgement(Locale.CANADA, "321"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+    }
+
+    @Test
+    @DisplayName("should reject annotation HTML reads when document backs an outbound email archive")
+    void shouldRejectHtmlAnnotation_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.getHtmlAnnotation("321"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+    }
+
+    @Test
+    @DisplayName("should hide last document description when newest document backs an outbound email archive")
+    void shouldHideLastDocumentDesc_whenNewestDocumentBacksOutboundEmailArchive() {
+        Document document = activeDocument();
+        document.setDocdesc("Outbound email archive 123");
+        when(documentDao.findMaxDocNo()).thenReturn(321);
+        when(documentDao.find((Object) Integer.valueOf(321))).thenReturn(document);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThat(EDocUtil.getLastDocumentDesc()).isNull();
+    }
+
+    @Test
+    @DisplayName("should reject document directory reads when filename belongs to an outbound email archive")
+    void shouldRejectReadContent_whenFilenameBelongsToOutboundEmailArchive() throws Exception {
+        CarlosProperties.getInstance().setProperty("DOCUMENT_DIR", tempDir.toString());
+        Files.write(tempDir.resolve("archive.pdf"), new byte[] {1});
+        when(outboundEmailArchiveDao.existsByFileName("archive.pdf")).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.readContent("archive.pdf"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
     }
 
     @Test

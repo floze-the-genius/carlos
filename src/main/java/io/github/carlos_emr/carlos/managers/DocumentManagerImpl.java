@@ -159,6 +159,7 @@ public class DocumentManagerImpl implements DocumentManager {
         if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", "r", "")) {
             throw new RuntimeException("Read Access Denied _edoc for provider " + loggedInInfo.getLoggedInProviderNo());
         }
+        assertNotOutboundEmailArchiveDocument(documentId);
 
         CtlDocument result = ctlDocumentDao.getCtrlDocument(documentId);
 
@@ -552,6 +553,7 @@ public class DocumentManagerImpl implements DocumentManager {
     }
 
     public List<String> getProvidersThatHaveAcknowledgedDocument(LoggedInInfo loggedInInfo, Integer documentId) {
+        assertNotOutboundEmailArchiveDocument(documentId);
         List<ProviderInboxItem> inboxList = providerInboxRoutingDao.getProvidersWithRoutingForDocument("DOC", documentId);
         List<String> providerList = new ArrayList<String>();
         for (ProviderInboxItem item : inboxList) {
@@ -660,7 +662,7 @@ public class DocumentManagerImpl implements DocumentManager {
 		if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", "w", "")) {
 			throw new RuntimeException("Write Access Denied _edoc for provider " + loggedInInfo.getLoggedInProviderNo());
 		}
-        assertNotOutboundEmailArchiveDocument(documentId);
+		assertNotOutboundEmailArchiveDocument(documentId);
 
 		if (queueId != null && queueId > 0) {
 			queueDocumentLinkDAO.addActiveQueueDocumentLink(queueId, documentId);

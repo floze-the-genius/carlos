@@ -329,6 +329,7 @@ public final class EDocUtil {
      * @return the new documentId
      */
     public static String addDocumentSQL(EDoc newDocument) {
+        assertNotOutboundEmailArchiveFileName(newDocument.getFileName());
         Document doc = new Document();
         doc.setDoctype(newDocument.getType());
         doc.setDocClass(newDocument.getDocClass());
@@ -1004,8 +1005,19 @@ public final class EDocUtil {
         return outboundEmailArchiveDao().existsByDocumentNo(documentNo);
     }
 
+    private static boolean isOutboundEmailArchiveFileName(String fileName) {
+        return fileName != null && !fileName.isBlank() && outboundEmailArchiveDao().existsByFileName(fileName);
+    }
+
     private static void assertNotOutboundEmailArchiveDocument(Integer documentNo) {
         if (isOutboundEmailArchiveDocumentNo(documentNo)) {
+            throw new IllegalStateException(
+                    "Outbound email archive eDocs must be managed through the controlled archive workflow");
+        }
+    }
+
+    private static void assertNotOutboundEmailArchiveFileName(String fileName) {
+        if (isOutboundEmailArchiveFileName(fileName)) {
             throw new IllegalStateException(
                     "Outbound email archive eDocs must be managed through the controlled archive workflow");
         }
@@ -1074,6 +1086,7 @@ public final class EDocUtil {
     }
 
     public static int addDocument(String demoNo, String docFileName, String docDesc, String docType, String docClass, String docSubClass, String contentType, String contentDateTime, String observationDate, String updateDateTime, String docCreator, String responsible, String reviewer, String reviewDateTime, String source, String sourceFacility, String receivedDate) {
+        assertNotOutboundEmailArchiveFileName(docFileName);
 
         Document doc = new Document();
         doc.setDoctype(docType);
@@ -1360,6 +1373,7 @@ public final class EDocUtil {
     // FindSecBugs PATH_TRAVERSAL_IN: path validated for directory containment via PathValidationUtils before use
     @SuppressFBWarnings(value = "PATH_TRAVERSAL_IN", justification = "path validated for directory containment via PathValidationUtils before use")
     public static void writeDocContent(String fileName, byte[] content) throws IOException {
+        assertNotOutboundEmailArchiveFileName(fileName);
         String docDir = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR");
         File docDirFile = new File(docDir);
         File file = PathValidationUtils.validatePath(fileName, docDirFile);

@@ -204,6 +204,7 @@ public class DocumentManagerImpl implements DocumentManager {
             logger.error("Document filename failed path validation: {}", Encode.forJava(fileName));
             throw new IOException("Document filename failed path validation", e);
         }
+        assertNotOutboundEmailArchiveFileName(fileName);
         FileUtils.writeByteArrayToFile(file, documentData);
 
         // Gets the number of pages for the document
@@ -277,6 +278,10 @@ public class DocumentManagerImpl implements DocumentManager {
     public Integer saveDocument(LoggedInInfo loggedInInfo, Document document, CtlDocument ctlDocument) {
         if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", "w", "")) {
             throw new RuntimeException("Write Access Denied _edoc for provider " + loggedInInfo.getLoggedInProviderNo());
+        }
+        assertNotOutboundEmailArchiveDocument(document);
+        if (document != null) {
+            assertNotOutboundEmailArchiveFileName(document.getDocfilename());
         }
 
         Integer savedId = null;
@@ -368,6 +373,10 @@ public class DocumentManagerImpl implements DocumentManager {
 
         if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", "x", "")) {
             throw new RuntimeException("Read and Write Access Denied _edoc for provider " + loggedInInfo.getLoggedInProviderNo());
+        }
+        assertNotOutboundEmailArchiveDocument(document);
+        if (document != null) {
+            assertNotOutboundEmailArchiveFileName(document.getDocfilename());
         }
 
         // move the PDF from the temp location to CARLOS document directory.
@@ -501,6 +510,7 @@ public class DocumentManagerImpl implements DocumentManager {
             if (existingDocument != null && existingDocument.getId() != null && existingDocument.getId() > 0) {
                 document.setDocumentNo(existingDocument.getId());
             }
+            assertNotOutboundEmailArchiveFileName(document.getDocfilename());
 
             // Always write to file system, updates will overwrite.
             EDocUtil.writeDocContent(document.getDocfilename(), document.getBase64Binary());
@@ -650,6 +660,7 @@ public class DocumentManagerImpl implements DocumentManager {
 		if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", "w", "")) {
 			throw new RuntimeException("Write Access Denied _edoc for provider " + loggedInInfo.getLoggedInProviderNo());
 		}
+        assertNotOutboundEmailArchiveDocument(documentId);
 
 		if (queueId != null && queueId > 0) {
 			queueDocumentLinkDAO.addActiveQueueDocumentLink(queueId, documentId);
@@ -666,9 +677,27 @@ public class DocumentManagerImpl implements DocumentManager {
         if (!securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", "r", null)) {
             throw new SecurityException("missing required sec object (_edoc)");
         }
-        List<DocumentListItemDTO> results = documentDao.findDocumentDTOsByDemographicNo(demographicNo);
+        List<DocumentListItemDTO> results = withoutOutboundEmailArchiveDocumentDTOs(
+                documentDao.findDocumentDTOsByDemographicNo(demographicNo));
         LogAction.addLogSynchronous(loggedInInfo, "DocumentManager.getDocumentDTOs",
                 "demographicNo=" + demographicNo);
         return results;
+    }
+
+    private List<DocumentListItemDTO> withoutOutboundEmailArchiveDocumentDTOs(List<DocumentListItemDTO> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return documents;
+        }
+        List<DocumentListItemDTO> filteredDocuments = new ArrayList<DocumentListItemDTO>();
+        boolean removedDocument = false;
+        for (DocumentListItemDTO document : documents) {
+            if (document == null || document.getDocumentNo() == null
+                    || !outboundEmailArchiveDao.existsByDocumentNo(document.getDocumentNo())) {
+                filteredDocuments.add(document);
+            } else {
+                removedDocument = true;
+            }
+        }
+        return removedDocument ? filteredDocuments : documents;
     }
 }

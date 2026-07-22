@@ -180,6 +180,54 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject document metadata creation when filename belongs to an outbound email archive")
+    void shouldRejectAddDocumentSql_whenFilenameBelongsToOutboundEmailArchive() {
+        EDoc newDocument = new EDoc();
+        newDocument.setFileName("archive.pdf");
+        when(outboundEmailArchiveDao.existsByFileName("archive.pdf")).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.addDocumentSQL(newDocument))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(documentDao, never()).persist(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("should reject legacy document creation when filename belongs to an outbound email archive")
+    void shouldRejectAddDocument_whenFilenameBelongsToOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByFileName("archive.pdf")).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.addDocument(
+                "123",
+                "archive.pdf",
+                "Archive",
+                "DOC",
+                null,
+                null,
+                "application/pdf",
+                null,
+                null,
+                null,
+                "999998",
+                "999998"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(documentDao, never()).persist(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("should reject document file writes when filename belongs to an outbound email archive")
+    void shouldRejectWriteDocContent_whenFilenameBelongsToOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByFileName("archive.pdf")).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.writeDocContent("archive.pdf", new byte[] {1}))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+    }
+
+    @Test
     @DisplayName("should reject consult attachment when document backs an outbound email archive")
     void shouldRejectConsultAttachment_whenDocumentBacksOutboundEmailArchive() {
         when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);

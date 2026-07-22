@@ -165,6 +165,21 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject edit when document backs an outbound email archive")
+    void shouldRejectEdit_whenDocumentBacksOutboundEmailArchive() {
+        EDoc editedDocument = new EDoc();
+        editedDocument.setDocId("321");
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.editDocumentSQL(editedDocument, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(documentDao, never()).find(any());
+        verify(documentDao, never()).merge(any(Document.class));
+    }
+
+    @Test
     @DisplayName("should reject consult attachment when document backs an outbound email archive")
     void shouldRejectConsultAttachment_whenDocumentBacksOutboundEmailArchive() {
         when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);

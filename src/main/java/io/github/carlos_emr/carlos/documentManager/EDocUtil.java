@@ -439,7 +439,9 @@ public final class EDocUtil {
 
     public static void editDocumentSQL(EDoc newDocument, boolean doReview) {
 
-        Document doc = getDocumentDao().find(ConversionUtils.fromIntString(newDocument.getDocId()));
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(newDocument.getDocId());
+        assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        Document doc = getDocumentDao().find(parsedDocumentNo);
         if (doc != null) {
             doc.setDoctype(newDocument.getType());
             doc.setDocClass(newDocument.getDocClass());

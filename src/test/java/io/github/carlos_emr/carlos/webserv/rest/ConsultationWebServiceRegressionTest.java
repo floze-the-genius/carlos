@@ -150,6 +150,24 @@ class ConsultationWebServiceRegressionTest {
         verify(consultationManager, never()).saveConsultResponseDoc(eq(loggedInInfo), any(ConsultResponseDoc.class));
     }
 
+    @Test
+    @DisplayName("should reject outbound archive response attachments even when validationError is supplied")
+    void shouldRejectOutboundArchiveResponseAttachmentsEvenWithValidationError() {
+        ConsultationAttachmentTo1 attachment = existingDocumentAttachment(321);
+        attachment.setValidationError("client supplied validation error");
+        ConsultationResponseTo1 response = new ConsultationResponseTo1();
+        response.setId(789);
+        response.setAttachments(List.of(attachment));
+        when(consultationManager.getConsultResponseDocs(loggedInInfo, response.getId())).thenReturn(new ArrayList<>());
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "saveResponseAttachments", response))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(consultationManager, never()).saveConsultResponseDoc(eq(loggedInInfo), any(ConsultResponseDoc.class));
+    }
+
     private static ConsultationAttachmentTo1 newDocumentAttachment() {
         ConsultationAttachmentTo1 attachment = new ConsultationAttachmentTo1();
         attachment.setDocumentType(ConsultationAttachmentTo1.TYPE_DOC);

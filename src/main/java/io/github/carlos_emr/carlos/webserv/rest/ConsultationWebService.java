@@ -840,7 +840,7 @@ public class ConsultationWebService extends AbstractServiceImpl {
 
     private void assertNoOutboundEmailArchiveAttachments(List<ConsultationAttachmentTo1> attachments) {
         for (ConsultationAttachmentTo1 attachment : attachments) {
-            if (attachment != null && attachment.getValidationError() == null) {
+            if (attachment != null) {
                 assertNotOutboundEmailArchiveAttachment(attachment);
             }
         }

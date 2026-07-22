@@ -275,6 +275,7 @@ public class ManageDocument2Action extends ActionSupport {
             log.warn("documentUpdateAjax: invalid or missing demog");
             return;
         }
+        assertNotOutboundEmailArchiveDocument(documentId);
 
         LogAction.addLog(LoggedInInfo.getLoggedInInfoFromSession(request).getLoggedInProviderNo(), LogConst.ADD, LogConst.CON_DOCUMENT, documentId, request.getRemoteAddr(), demog);
 
@@ -424,6 +425,7 @@ public class ManageDocument2Action extends ActionSupport {
             throw new SecurityException("missing required sec object (_edoc)");
         }
 
+        assertNotOutboundEmailArchiveRoutingDocument(docType, docId);
         providerInboxRoutingDAO.removeLinkFromDocument(docType, Integer.parseInt(docId), providerNo);
         HashMap hm = new HashMap();
         hm.put("linkedProviders", providerInboxRoutingDAO.getProvidersWithRoutingForDocument(docType, Integer.parseInt(docId)));
@@ -455,6 +457,7 @@ public class ManageDocument2Action extends ActionSupport {
             throw new SecurityException("missing required sec object (_edoc)");
         }
 
+        assertNotOutboundEmailArchiveDocument(documentId);
         try {
             EDocUtil.refileDocument(documentId, queueId);
         } catch (Exception e) {
@@ -489,6 +492,7 @@ public class ManageDocument2Action extends ActionSupport {
             addActionError("Document ID is missing. Cannot process document update.");
             return "error";
         }
+        assertNotOutboundEmailArchiveDocument(documentId);
 
         LogAction.addLog(LoggedInInfo.getLoggedInInfoFromSession(request).getLoggedInProviderNo(), LogConst.ADD, LogConst.CON_DOCUMENT, documentId, request.getRemoteAddr());
 
@@ -1034,6 +1038,12 @@ public class ManageDocument2Action extends ActionSupport {
         }
     }
 
+    private void assertNotOutboundEmailArchiveRoutingDocument(String docType, String documentNo) {
+        if (docType == null || LabResultData.DOCUMENT.equalsIgnoreCase(docType)) {
+            assertNotOutboundEmailArchiveDocument(documentNo);
+        }
+    }
+
     /**
      * Renders both document annotations/acknowledgements/ticklers and document description
      * metadata as an HTML fragment.
@@ -1088,6 +1098,7 @@ public class ManageDocument2Action extends ActionSupport {
         }
 
         String doc_no = request.getParameter("doc_no");
+        assertNotOutboundEmailArchiveDocument(doc_no);
         Locale locale = request.getLocale();
 
         String annotation = "", acknowledgement = "", tickler = "";

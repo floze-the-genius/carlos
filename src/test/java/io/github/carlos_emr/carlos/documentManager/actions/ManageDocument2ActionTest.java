@@ -259,6 +259,82 @@ class ManageDocument2ActionTest extends CarlosUnitTestBase {
     }
 
     @Test
+    void shouldReturnNoneAndSendForbidden_whenUpdatingOutboundArchiveDocumentAjax() {
+        request.setParameter("method", "documentUpdateAjax");
+        request.setParameter("documentId", "321");
+        request.setParameter("demog", "100");
+        request.setParameter("docType", "DOC");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("w"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(patientLabRoutingDao, never()).findByLabNoAndLabType(anyInt(), anyString());
+        verify(documentDao, never()).getDocument("321");
+    }
+
+    @Test
+    void shouldReturnNoneAndSendForbidden_whenUpdatingOutboundArchiveDocument() {
+        request.setParameter("method", "documentUpdate");
+        request.setParameter("documentId", "321");
+        request.setParameter("docType", "DOC");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("w"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(documentDao, never()).getDocument("321");
+    }
+
+    @Test
+    void shouldReturnNoneAndSendForbidden_whenRemovingOutboundArchiveDocumentRouting() {
+        request.setParameter("method", "removeLinkFromDocument");
+        request.setParameter("docType", LabResultData.DOCUMENT);
+        request.setParameter("docId", "321");
+        request.setParameter("providerNo", "999998");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("w"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(providerInboxRoutingDao, never()).removeLinkFromDocument(anyString(), anyInt(), anyString());
+    }
+
+    @Test
+    void shouldReturnNoneAndSendForbidden_whenRefilingOutboundArchiveDocument() {
+        request.setParameter("method", "refileDocumentAjax");
+        request.setParameter("documentId", "321");
+        request.setParameter("queueId", "1");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("w"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+    }
+
+    @Test
+    void shouldReturnNoneAndSendForbidden_whenViewingOutboundArchiveDocumentInfo() throws Exception {
+        request.setParameter("method", "viewDocumentDescription");
+        request.setParameter("doc_no", "321");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("r"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        assertThat(response.getContentAsString()).isEmpty();
+    }
+
+    @Test
     void shouldSanitizeFilename_whenBuildingContentDispositionHeader() throws Exception {
         Method sanitize = ManageDocument2Action.class.getDeclaredMethod("sanitizeHeaderValue", String.class);
         sanitize.setAccessible(true);

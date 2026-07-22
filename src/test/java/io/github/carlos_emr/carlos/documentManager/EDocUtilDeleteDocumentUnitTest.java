@@ -31,6 +31,7 @@ import io.github.carlos_emr.carlos.commn.model.Demographic;
 import io.github.carlos_emr.carlos.commn.model.Document;
 import io.github.carlos_emr.carlos.commn.model.Provider;
 import io.github.carlos_emr.carlos.managers.DemographicManager;
+import io.github.carlos_emr.carlos.managers.ProgramManager2;
 import io.github.carlos_emr.carlos.test.unit.CarlosUnitTestBase;
 import io.github.carlos_emr.carlos.utility.LoggedInInfo;
 import org.junit.jupiter.api.AfterEach;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.Date;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,6 +63,7 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     private DocumentDao documentDao;
     private LoggedInInfo loggedInInfo;
     private OutboundEmailArchiveDao outboundEmailArchiveDao;
+    private ProgramManager2 programManager2;
     private ProviderDao providerDao;
     private String previousFilterOnFacility;
 
@@ -74,12 +77,16 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         documentDao = mock(DocumentDao.class);
         loggedInInfo = mock(LoggedInInfo.class);
         outboundEmailArchiveDao = mock(OutboundEmailArchiveDao.class);
+        programManager2 = mock(ProgramManager2.class);
         providerDao = mock(ProviderDao.class);
         registerMock(CtlDocumentDao.class, ctlDocumentDao);
         registerMock(DemographicManager.class, demographicManager);
         registerMock(DocumentDao.class, documentDao);
         registerMock(OutboundEmailArchiveDao.class, outboundEmailArchiveDao);
+        registerMock(ProgramManager2.class, programManager2);
         registerMock(ProviderDao.class, providerDao);
+        when(loggedInInfo.getLoggedInProviderNo()).thenReturn("999998");
+        when(programManager2.getProgramDomain(loggedInInfo, "999998")).thenReturn(List.of());
     }
 
     @AfterEach
@@ -123,6 +130,18 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject refile when document backs an outbound email archive")
+    void shouldRejectRefile_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.refileDocument("321", "1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(documentDao, never()).find(any());
+    }
+
+    @Test
     @DisplayName("should omit outbound archive eDocs from demographic export document lists")
     void shouldOmitOutboundArchiveDocuments_whenListingDemographicDocumentsForExport() {
         Document archiveDocument = activeDocument();
@@ -132,6 +151,45 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
 
         List<EDoc> documents = EDocUtil.listDemoDocs(loggedInInfo, "123");
+
+        assertThat(documents)
+                .extracting(EDoc::getDocId)
+                .containsExactly("654");
+    }
+
+    @Test
+    @DisplayName("should omit outbound archive eDocs from general demographic document lists")
+    void shouldOmitOutboundArchiveDocuments_whenListingDemographicDocuments() {
+        Document archiveDocument = activeDocument();
+        Document ordinaryDocument = activeDocument(654);
+        when(documentDao.findDocuments("demographic", "123", null, false, false, true, EDocUtil.EDocSort.OBSERVATIONDATE, null))
+                .thenReturn(List.of(new Object[] {new CtlDocument(), archiveDocument}, new Object[] {new CtlDocument(), ordinaryDocument}));
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        List<EDoc> documents = EDocUtil.listDocs(
+                loggedInInfo,
+                "demographic",
+                "123",
+                null,
+                EDocUtil.PRIVATE,
+                EDocUtil.EDocSort.OBSERVATIONDATE);
+
+        assertThat(documents)
+                .extracting(EDoc::getDocId)
+                .containsExactly("654");
+    }
+
+    @Test
+    @DisplayName("should omit outbound archive eDocs from updated demographic document lists")
+    void shouldOmitOutboundArchiveDocuments_whenListingUpdatedDemographicDocuments() {
+        Date since = new Date();
+        Document archiveDocument = activeDocument();
+        Document ordinaryDocument = activeDocument(654);
+        when(documentDao.findByDemographicUpdateDate(123, since))
+                .thenReturn(List.of(archiveDocument, ordinaryDocument));
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        List<EDoc> documents = EDocUtil.listAllDemographicDocsSince(loggedInInfo, 123, since);
 
         assertThat(documents)
                 .extracting(EDoc::getDocId)

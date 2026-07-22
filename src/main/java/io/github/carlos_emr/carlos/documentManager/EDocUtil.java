@@ -508,6 +508,9 @@ public final class EDocUtil {
 
         for (Object[] o : docs) {
             Document d = (Document) o[0];
+            if (isOutboundEmailArchiveDocument(d)) {
+                continue;
+            }
 
             EDoc currentdoc = new EDoc();
             currentdoc.setDocId("" + d.getDocumentNo());
@@ -544,6 +547,9 @@ public final class EDocUtil {
         } else { //remove attached documents from full document list
             for (Object[] o : ctlDocs) {
                 Document d = (Document) o[1];
+                if (isOutboundEmailArchiveDocument(d)) {
+                    continue;
+                }
 
                 EDoc currentdoc = new EDoc();
                 currentdoc.setDocId("" + d.getDocumentNo());
@@ -592,6 +598,9 @@ public final class EDocUtil {
     public static EDoc getEDocFromDocId(String docId) {
         DocumentDao dao = SpringUtils.getBean(DocumentDao.class);
         EDoc currentdoc = new EDoc();
+        if (isOutboundEmailArchiveDocumentId(docId)) {
+            return currentdoc;
+        }
 
         for (Object[] o : dao.findCtlDocsAndDocsByDocNo(ConversionUtils.fromIntString(docId))) {
             Document d = (Document) o[0];
@@ -634,9 +643,9 @@ public final class EDocUtil {
 
         ArrayList<EDoc> resultDocs = new ArrayList<EDoc>();
         for (String docId : docIds) {
-            EDoc currentdoc = new EDoc();
-            currentdoc = getEDocFromDocId(docId);
-            resultDocs.add(currentdoc);
+            if (!isOutboundEmailArchiveDocumentId(docId)) {
+                resultDocs.add(getEDocFromDocId(docId));
+            }
         }
         return resultDocs;
     }
@@ -651,6 +660,9 @@ public final class EDocUtil {
         ArrayList<EDoc> resultDocs = new ArrayList<EDoc>();
         for (Object[] o : documents) {
             Document d = (Document) o[1];
+            if (isOutboundEmailArchiveDocument(d)) {
+                continue;
+            }
             EDoc currentdoc = toEDoc(d);
             resultDocs.add(currentdoc);
         }
@@ -671,8 +683,9 @@ public final class EDocUtil {
 
         List<EDoc> edocList = new ArrayList<EDoc>();
         for (Document document : documents) {
-            EDoc edoc = toEDoc(document);
-            edocList.add(edoc);
+            if (!isOutboundEmailArchiveDocument(document)) {
+                edocList.add(toEDoc(document));
+            }
         }
 
         if (CarlosProperties.getInstance().getBooleanProperty("FILTER_ON_FACILITY", "true")) {
@@ -694,6 +707,9 @@ public final class EDocUtil {
         ArrayList<EDoc> resultDocs = new ArrayList<EDoc>();
         for (Object[] o : documents) {
             Document d = (Document) o[1];
+            if (isOutboundEmailArchiveDocument(d)) {
+                continue;
+            }
             EDoc currentdoc = toEDoc(d);
             resultDocs.add(currentdoc);
         }
@@ -747,6 +763,9 @@ public final class EDocUtil {
 
         for (Object[] o : dao.findCtlDocsAndDocsByModuleCreatorResponsibleAndDates(Module.DEMOGRAPHIC, creator, responsible, startDate, endDate, unmatchedDemographics)) {
             Document d = (Document) o[0];
+            if (isOutboundEmailArchiveDocument(d)) {
+                continue;
+            }
             CtlDocument c = (CtlDocument) o[1];
 
             EDoc currentdoc = new EDoc();
@@ -867,6 +886,9 @@ public final class EDocUtil {
         DocumentDao dao = SpringUtils.getBean(DocumentDao.class);
 
         EDoc currentdoc = new EDoc();
+        if (isOutboundEmailArchiveDocumentId(documentNo)) {
+            return currentdoc;
+        }
 
         for (Object[] o : dao.findCtlDocsAndDocsByDocNo(ConversionUtils.fromIntString(documentNo))) {
             Document d = (Document) o[0];
@@ -909,7 +931,11 @@ public final class EDocUtil {
     }
 
     public String getDocumentName(String id) {
-        Document d = getDocumentDao().find(ConversionUtils.fromIntString(id));
+        Integer documentNo = ConversionUtils.fromIntString(id);
+        if (isOutboundEmailArchiveDocumentNo(documentNo)) {
+            return null;
+        }
+        Document d = getDocumentDao().find(documentNo);
         if (d != null) {
             return d.getDocfilename();
         }
@@ -947,6 +973,32 @@ public final class EDocUtil {
         }
     }
 
+    private static boolean isOutboundEmailArchiveDocument(Document document) {
+        return document != null && isOutboundEmailArchiveDocumentNo(document.getDocumentNo());
+    }
+
+    private static boolean isOutboundEmailArchiveDocumentId(String documentId) {
+        if (documentId == null || documentId.isBlank()) {
+            return false;
+        }
+        try {
+            return isOutboundEmailArchiveDocumentNo(Integer.valueOf(documentId));
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static boolean isOutboundEmailArchiveDocumentNo(Integer documentNo) {
+        return outboundEmailArchiveDao().existsByDocumentNo(documentNo);
+    }
+
+    private static void assertNotOutboundEmailArchiveDocument(Integer documentNo) {
+        if (isOutboundEmailArchiveDocumentNo(documentNo)) {
+            throw new IllegalStateException(
+                    "Outbound email archive eDocs must be managed through the controlled archive workflow");
+        }
+    }
+
     private static void assertNotActiveOutboundEmailArchiveDocument(Integer documentNo) {
         if (outboundEmailArchiveDao().existsActiveByDocumentNo(documentNo)) {
             throw new IllegalStateException(
@@ -959,7 +1011,9 @@ public final class EDocUtil {
     public static void refileDocument(String documentNo, String queueId) throws Exception {
 
         File sourceBaseDir = new File(CarlosProperties.getInstance().getProperty("DOCUMENT_DIR"));
-        Document d = getDocumentDao().find(ConversionUtils.fromIntString(documentNo));
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(documentNo);
+        assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        Document d = getDocumentDao().find(parsedDocumentNo);
         File sourceFile = PathValidationUtils.validateExistingPath(
                 new File(sourceBaseDir, d.getDocfilename()), sourceBaseDir);
 

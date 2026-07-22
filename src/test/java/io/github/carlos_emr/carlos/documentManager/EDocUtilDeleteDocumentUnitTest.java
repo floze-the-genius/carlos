@@ -23,12 +23,16 @@ package io.github.carlos_emr.carlos.documentManager;
 
 import io.github.carlos_emr.CarlosProperties;
 import io.github.carlos_emr.carlos.PMmodule.dao.ProviderDao;
+import io.github.carlos_emr.carlos.commn.dao.ConsultDocsDao;
 import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
+import io.github.carlos_emr.carlos.commn.dao.EFormDocsDao;
 import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
+import io.github.carlos_emr.carlos.commn.model.ConsultDocs;
 import io.github.carlos_emr.carlos.commn.model.CtlDocument;
 import io.github.carlos_emr.carlos.commn.model.Demographic;
 import io.github.carlos_emr.carlos.commn.model.Document;
+import io.github.carlos_emr.carlos.commn.model.EFormDocs;
 import io.github.carlos_emr.carlos.commn.model.Provider;
 import io.github.carlos_emr.carlos.managers.DemographicManager;
 import io.github.carlos_emr.carlos.managers.ProgramManager2;
@@ -59,8 +63,10 @@ import static org.mockito.Mockito.when;
 class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
 
     private CtlDocumentDao ctlDocumentDao;
+    private ConsultDocsDao consultDocsDao;
     private DemographicManager demographicManager;
     private DocumentDao documentDao;
+    private EFormDocsDao eFormDocsDao;
     private LoggedInInfo loggedInInfo;
     private OutboundEmailArchiveDao outboundEmailArchiveDao;
     private ProgramManager2 programManager2;
@@ -73,15 +79,19 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         previousFilterOnFacility = CarlosProperties.getInstance().getProperty("FILTER_ON_FACILITY");
         CarlosProperties.getInstance().setProperty("FILTER_ON_FACILITY", "false");
         ctlDocumentDao = mock(CtlDocumentDao.class);
+        consultDocsDao = mock(ConsultDocsDao.class);
         demographicManager = mock(DemographicManager.class);
         documentDao = mock(DocumentDao.class);
+        eFormDocsDao = mock(EFormDocsDao.class);
         loggedInInfo = mock(LoggedInInfo.class);
         outboundEmailArchiveDao = mock(OutboundEmailArchiveDao.class);
         programManager2 = mock(ProgramManager2.class);
         providerDao = mock(ProviderDao.class);
         registerMock(CtlDocumentDao.class, ctlDocumentDao);
+        registerMock(ConsultDocsDao.class, consultDocsDao);
         registerMock(DemographicManager.class, demographicManager);
         registerMock(DocumentDao.class, documentDao);
+        registerMock(EFormDocsDao.class, eFormDocsDao);
         registerMock(OutboundEmailArchiveDao.class, outboundEmailArchiveDao);
         registerMock(ProgramManager2.class, programManager2);
         registerMock(ProviderDao.class, providerDao);
@@ -152,6 +162,30 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
                 .hasMessageContaining("controlled archive workflow");
 
         verify(documentDao, never()).find(any());
+    }
+
+    @Test
+    @DisplayName("should reject consult attachment when document backs an outbound email archive")
+    void shouldRejectConsultAttachment_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.attachDocConsult("999998", "321", "456"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(consultDocsDao, never()).persist(any(ConsultDocs.class));
+    }
+
+    @Test
+    @DisplayName("should reject eForm attachment when document backs an outbound email archive")
+    void shouldRejectEFormAttachment_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.attachDocEForm("999998", "321", "456"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verify(eFormDocsDao, never()).persist(any(EFormDocs.class));
     }
 
     @Test
@@ -299,5 +333,11 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
         Field documentDaoField = EDocUtil.class.getDeclaredField("documentDao");
         documentDaoField.setAccessible(true);
         documentDaoField.set(null, null);
+        Field consultDocsDaoField = EDocUtil.class.getDeclaredField("consultDocsDao");
+        consultDocsDaoField.setAccessible(true);
+        consultDocsDaoField.set(null, null);
+        Field eformDocsDaoField = EDocUtil.class.getDeclaredField("eformDocsDao");
+        eformDocsDaoField.setAccessible(true);
+        eformDocsDaoField.set(null, null);
     }
 }

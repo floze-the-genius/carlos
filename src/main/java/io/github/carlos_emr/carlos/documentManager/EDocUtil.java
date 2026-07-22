@@ -410,9 +410,13 @@ public final class EDocUtil {
     }
 
     public static void attachDocConsult(String providerNo, String docNo, String consultId) {
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(docNo);
+        if (parsedDocumentNo != null) {
+            assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        }
         ConsultDocs consultDoc = new ConsultDocs();
         consultDoc.setRequestId(ConversionUtils.fromIntString(consultId));
-        consultDoc.setDocumentNo(ConversionUtils.fromIntString(docNo));
+        consultDoc.setDocumentNo(parsedDocumentNo);
         consultDoc.setDocType(ConsultDocs.DOCTYPE_DOC);
         consultDoc.setAttachDate(new Date());
         consultDoc.setProviderNo(providerNo);
@@ -420,9 +424,13 @@ public final class EDocUtil {
     }
 
     public static void attachDocEForm(String providerNo, String docNo, String consultId) {
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(docNo);
+        if (parsedDocumentNo != null) {
+            assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        }
         EFormDocs eformDoc = new EFormDocs();
         eformDoc.setFdid(ConversionUtils.fromIntString(consultId));
-        eformDoc.setDocumentNo(ConversionUtils.fromIntString(docNo));
+        eformDoc.setDocumentNo(parsedDocumentNo);
         eformDoc.setDocType(ConsultDocs.DOCTYPE_DOC);
         eformDoc.setAttachDate(new Date());
         eformDoc.setProviderNo(providerNo);

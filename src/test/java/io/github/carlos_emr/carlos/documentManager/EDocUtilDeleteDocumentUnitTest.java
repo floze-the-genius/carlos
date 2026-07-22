@@ -21,6 +21,7 @@
  */
 package io.github.carlos_emr.carlos.documentManager;
 
+import io.github.carlos_emr.CarlosProperties;
 import io.github.carlos_emr.carlos.PMmodule.dao.ProviderDao;
 import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
@@ -39,6 +40,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,10 +62,13 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     private LoggedInInfo loggedInInfo;
     private OutboundEmailArchiveDao outboundEmailArchiveDao;
     private ProviderDao providerDao;
+    private String previousFilterOnFacility;
 
     @BeforeEach
     void setUp() throws Exception {
         clearCachedDocumentDao();
+        previousFilterOnFacility = CarlosProperties.getInstance().getProperty("FILTER_ON_FACILITY");
+        CarlosProperties.getInstance().setProperty("FILTER_ON_FACILITY", "false");
         ctlDocumentDao = mock(CtlDocumentDao.class);
         demographicManager = mock(DemographicManager.class);
         documentDao = mock(DocumentDao.class);
@@ -79,6 +84,11 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
 
     @AfterEach
     void tearDown() throws Exception {
+        if (previousFilterOnFacility == null) {
+            CarlosProperties.getInstance().remove("FILTER_ON_FACILITY");
+        } else {
+            CarlosProperties.getInstance().setProperty("FILTER_ON_FACILITY", previousFilterOnFacility);
+        }
         clearCachedDocumentDao();
     }
 
@@ -110,6 +120,22 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
 
         assertThat(document.getStatus()).isEqualTo(Document.STATUS_ACTIVE);
         verify(documentDao, never()).merge(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("should omit outbound archive eDocs from demographic export document lists")
+    void shouldOmitOutboundArchiveDocuments_whenListingDemographicDocumentsForExport() {
+        Document archiveDocument = activeDocument();
+        Document ordinaryDocument = activeDocument(654);
+        when(documentDao.findConstultDocsDocsAndProvidersByModule(DocumentDao.Module.DEMOGRAPHIC, 123))
+                .thenReturn(List.of(new Object[] {archiveDocument}, new Object[] {ordinaryDocument}));
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        List<EDoc> documents = EDocUtil.listDemoDocs(loggedInInfo, "123");
+
+        assertThat(documents)
+                .extracting(EDoc::getDocId)
+                .containsExactly("654");
     }
 
     @Test
@@ -181,8 +207,12 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     }
 
     private Document activeDocument() {
+        return activeDocument(321);
+    }
+
+    private Document activeDocument(Integer documentNo) {
         Document document = new Document();
-        document.setDocumentNo(321);
+        document.setDocumentNo(documentNo);
         document.setStatus(Document.STATUS_ACTIVE);
         return document;
     }

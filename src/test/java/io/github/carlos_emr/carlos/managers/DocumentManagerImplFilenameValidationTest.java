@@ -20,6 +20,8 @@ import org.mockito.MockedStatic;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Date;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -101,6 +103,45 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
         assertThatThrownBy(() -> manager.renderDocument(loggedInInfo, "321"))
                 .isInstanceOf(SecurityException.class)
                 .hasMessageContaining("outbound email archive workflow");
+    }
+
+    @Test
+    @DisplayName("should reject generic document reads for outbound archive backing eDocs")
+    void shouldRejectGetDocument_whenDocumentBacksOutboundArchive() {
+        DocumentManagerImpl manager = newDocumentManager();
+        Document document = document(321);
+        when(securityInfoManager.hasPrivilege(eq(loggedInInfo), eq("_edoc"), eq("r"), eq("")))
+                .thenReturn(true);
+        when(documentDao.find((Object) Integer.valueOf(321))).thenReturn(document);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> manager.getDocument(loggedInInfo, 321))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("outbound email archive workflow");
+    }
+
+    @Test
+    @DisplayName("should filter outbound archive eDocs from generic document sync lists")
+    void shouldFilterOutboundArchiveDocuments_whenListingUpdatedDocuments() {
+        DocumentManagerImpl manager = newDocumentManager();
+        Document archiveDocument = document(321);
+        Document ordinaryDocument = document(654);
+        Date since = new Date(0L);
+        when(securityInfoManager.hasPrivilege(eq(loggedInInfo), eq("_edoc"), eq("r"), eq("")))
+                .thenReturn(true);
+        when(documentDao.findByUpdateDate(since, 10)).thenReturn(List.of(archiveDocument, ordinaryDocument));
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        List<Document> documents = manager.getDocumentsUpdateAfterDate(loggedInInfo, since, 10);
+
+        assertThat(documents).containsExactly(ordinaryDocument);
+    }
+
+    private Document document(Integer documentNo) {
+        Document document = new Document();
+        document.setDocumentNo(documentNo);
+        document.setStatus(Document.STATUS_ACTIVE);
+        return document;
     }
 
     private DocumentManagerImpl newDocumentManager() {

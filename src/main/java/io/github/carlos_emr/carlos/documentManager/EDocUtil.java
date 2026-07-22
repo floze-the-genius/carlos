@@ -820,6 +820,9 @@ public final class EDocUtil {
         ArrayList<EDoc> resultDocs = new ArrayList<EDoc>();
         for (Object[] o : dao.findConstultDocsDocsAndProvidersByModule(Module.DEMOGRAPHIC, ConversionUtils.fromIntString(moduleid))) {
             Document d = (Document) o[0];
+            if (outboundEmailArchiveDao().existsByDocumentNo(d.getDocumentNo())) {
+                continue;
+            }
 
             EDoc currentdoc = new EDoc();
             currentdoc.setDocId("" + d.getDocumentNo());

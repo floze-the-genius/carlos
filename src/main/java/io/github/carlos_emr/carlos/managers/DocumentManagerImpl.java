@@ -92,6 +92,8 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 public class DocumentManagerImpl implements DocumentManager {
 
     private static final String PARENT_DIR = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR");
+    private static final String OUTBOUND_ARCHIVE_READ_MESSAGE =
+            "Outbound email archive eDocs must be read through the outbound email archive workflow";
     private final Logger logger = MiscUtils.getLogger();
 
     @Autowired
@@ -133,6 +135,7 @@ public class DocumentManagerImpl implements DocumentManager {
 
         //--- log action ---
         if (result != null) {
+            assertNotOutboundEmailArchiveDocument(result);
             LogAction.addLog(loggedInInfo, "DocumentManager.getDocument", "id=" + id, "", "", "");
         }
 
@@ -141,6 +144,7 @@ public class DocumentManagerImpl implements DocumentManager {
 
     public List<Document> getDocumentsByDemographicNo(LoggedInInfo loggedInInfo, Integer demographicNo) {
         List<Document> result = documentDao.findByDemographicId(demographicNo + "");
+        result = withoutOutboundEmailArchiveDocuments(result);
 
         //--- log action ---
         if (result != null) {
@@ -232,6 +236,7 @@ public class DocumentManagerImpl implements DocumentManager {
         }
 
         List<Document> results = documentDao.findByUpdateDate(updatedAfterThisDateExclusive, itemsToReturn);
+        results = withoutOutboundEmailArchiveDocuments(results);
 
         LogAction.addLog(loggedInInfo, "DocumentManager.getUpdateAfterDate", "updatedAfterThisDateExclusive=" + updatedAfterThisDateExclusive, "", "", "Number items " + itemsToReturn);
 
@@ -244,6 +249,7 @@ public class DocumentManagerImpl implements DocumentManager {
         boolean hasConsent = patientConsentManager.hasProviderSpecificConsent(loggedInInfo) || patientConsentManager.getConsentType(ConsentType.PROVIDER_CONSENT_FILTER) == null;
         if (hasConsent) {
             results = documentDao.findByDemographicUpdateAfterDate(demographicId, updatedAfterThisDateExclusive);
+            results = withoutOutboundEmailArchiveDocuments(results);
             LogAction.addLogSynchronous(loggedInInfo, "DocumentManager.getDocumentsByDemographicIdUpdateAfterDate", "demographicId=" + demographicId + " updatedAfterThisDateExclusive=" + updatedAfterThisDateExclusive);
         }
         return (results);
@@ -256,6 +262,7 @@ public class DocumentManagerImpl implements DocumentManager {
         }
 
         List<Document> results = documentDao.findByProgramProviderDemographicUpdateDate(programId, providerNo, demographicId, updatedAfterThisDateExclusive.getTime(), itemsToReturn);
+        results = withoutOutboundEmailArchiveDocuments(results);
 
         LogAction.addLog(loggedInInfo, "DocumentManager.getDocumentsByProgramProviderDemographicDate", "programId=" + programId, "providerNo=" + providerNo, demographicId + "", "updatedAfterThisDateExclusive=" + updatedAfterThisDateExclusive.getTime());
 
@@ -423,6 +430,7 @@ public class DocumentManagerImpl implements DocumentManager {
             logger.error("Document filename contains path separator, rejected: {}", Encode.forJava(filename));
             return null;
         }
+        assertNotOutboundEmailArchiveFileName(filename);
 
         String documentDir = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR");
 
@@ -452,7 +460,7 @@ public class DocumentManagerImpl implements DocumentManager {
 
         LogAction.addLogSynchronous(loggedInInfo, "DocumentManager.getDemographicDocumentsByDocumentType", "fetching documents of type " + documentType.getName() + " for demographic " + demographicNo);
 
-        return documentDao.findByDemographicAndDoctype(demographicNo, documentType);
+        return withoutOutboundEmailArchiveDocuments(documentDao.findByDemographicAndDoctype(demographicNo, documentType));
     }
 
     public Document getDocumentByDemographicAndFilename(LoggedInInfo loggedInInfo, int demographicNo, String fileName) {
@@ -462,7 +470,9 @@ public class DocumentManagerImpl implements DocumentManager {
 
         LogAction.addLogSynchronous(loggedInInfo, "DocumentManager.getDocumentByDemographicAndFilename", "fetching document with filename " + fileName + " for demographic " + demographicNo);
 
-        return documentDao.findByDemographicAndFilename(demographicNo, fileName);
+        Document document = documentDao.findByDemographicAndFilename(demographicNo, fileName);
+        assertNotOutboundEmailArchiveDocument(document);
+        return document;
     }
 
     /**
@@ -568,6 +578,12 @@ public class DocumentManagerImpl implements DocumentManager {
         }
     }
 
+    private void assertNotOutboundEmailArchiveDocument(Document document) {
+        if (document != null) {
+            assertNotOutboundEmailArchiveDocument(document.getDocumentNo());
+        }
+    }
+
     private void assertNotOutboundEmailArchiveDocument(String documentId) {
         if (documentId == null || documentId.isBlank()) {
             return;
@@ -581,9 +597,28 @@ public class DocumentManagerImpl implements DocumentManager {
 
     private void assertNotOutboundEmailArchiveDocument(Integer documentId) {
         if (documentId != null && outboundEmailArchiveDao.existsByDocumentNo(documentId)) {
-            throw new SecurityException(
-                    "Outbound email archive eDocs must be read through the outbound email archive workflow");
+            throw new SecurityException(OUTBOUND_ARCHIVE_READ_MESSAGE);
         }
+    }
+
+    private void assertNotOutboundEmailArchiveFileName(String fileName) {
+        if (fileName != null && !fileName.isBlank() && outboundEmailArchiveDao.existsByFileName(fileName)) {
+            throw new SecurityException(OUTBOUND_ARCHIVE_READ_MESSAGE);
+        }
+    }
+
+    private List<Document> withoutOutboundEmailArchiveDocuments(List<Document> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return documents;
+        }
+        List<Document> filteredDocuments = new ArrayList<Document>();
+        for (Document document : documents) {
+            if (document == null || document.getDocumentNo() == null
+                    || !outboundEmailArchiveDao.existsByDocumentNo(document.getDocumentNo())) {
+                filteredDocuments.add(document);
+            }
+        }
+        return filteredDocuments;
     }
 
     // FindSecBugs PATH_TRAVERSAL_IN: path validated for directory containment via PathValidationUtils before use

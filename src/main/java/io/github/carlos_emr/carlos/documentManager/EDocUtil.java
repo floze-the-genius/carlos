@@ -943,10 +943,12 @@ public final class EDocUtil {
     }
 
     public static void undeleteDocument(String documentNo) {
-        CtlDocument cd = ctlDocumentDao().getCtrlDocument(ConversionUtils.fromIntString(documentNo));
+        Integer parsedDocumentNo = ConversionUtils.fromIntString(documentNo);
+        assertNotOutboundEmailArchiveDocument(parsedDocumentNo);
+        CtlDocument cd = ctlDocumentDao().getCtrlDocument(parsedDocumentNo);
         char status = undeleteStatus(cd);
 
-        Document d = getDocumentDao().find(ConversionUtils.fromIntString(documentNo));
+        Document d = getDocumentDao().find(parsedDocumentNo);
         if (d != null) {
             d.setStatus(status);
             d.setUpdatedatetime(MyDateFormat.getSysDate(getDmsDateTime()));
@@ -1194,6 +1196,9 @@ public final class EDocUtil {
         Long docIdL = getTableIdFromNoteId(noteId);
         if (docIdL > 0L) {
             Integer docId = docIdL.intValue();
+            if (isOutboundEmailArchiveDocumentNo(docId)) {
+                return doc;
+            }
 
             DocumentDao dao = SpringUtils.getBean(DocumentDao.class);
             Document d = dao.find(docId);

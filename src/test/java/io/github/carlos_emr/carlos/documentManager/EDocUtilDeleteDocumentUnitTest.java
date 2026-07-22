@@ -130,6 +130,19 @@ class EDocUtilDeleteDocumentUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should reject undelete when document backs an outbound email archive")
+    void shouldRejectUndelete_whenDocumentBacksOutboundEmailArchive() {
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> EDocUtil.undeleteDocument("321"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("controlled archive workflow");
+
+        verifyNoInteractions(ctlDocumentDao);
+        verify(documentDao, never()).find(any());
+    }
+
+    @Test
     @DisplayName("should reject refile when document backs an outbound email archive")
     void shouldRejectRefile_whenDocumentBacksOutboundEmailArchive() {
         when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);

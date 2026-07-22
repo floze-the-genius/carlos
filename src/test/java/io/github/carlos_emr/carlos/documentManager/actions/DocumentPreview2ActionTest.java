@@ -21,6 +21,8 @@
  */
 package io.github.carlos_emr.carlos.documentManager.actions;
 
+import io.github.carlos_emr.CarlosProperties;
+import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
 import io.github.carlos_emr.carlos.documentManager.DocumentAttachmentManager;
 import io.github.carlos_emr.carlos.documentManager.EDoc;
 import io.github.carlos_emr.carlos.documentManager.EDocUtil;
@@ -32,6 +34,7 @@ import io.github.carlos_emr.carlos.managers.SecurityInfoManager;
 import io.github.carlos_emr.carlos.test.unit.CarlosUnitTestBase;
 import io.github.carlos_emr.carlos.utility.LoggedInInfo;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.apache.struts2.ActionSupport;
 import org.apache.struts2.ServletActionContext;
 import org.junit.jupiter.api.AfterEach;
@@ -40,12 +43,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -95,6 +101,9 @@ class DocumentPreview2ActionTest extends CarlosUnitTestBase {
     private FormsManager mockFormsManager;
 
     @Mock
+    private OutboundEmailArchiveDao outboundEmailArchiveDao;
+
+    @Mock
     private LoggedInInfo mockLoggedInInfo;
 
     @Mock
@@ -103,9 +112,14 @@ class DocumentPreview2ActionTest extends CarlosUnitTestBase {
     private MockHttpServletRequest request;
     private MockHttpServletResponse response;
     private DocumentPreview2Action action;
+    private String previousDocumentDir;
+
+    @TempDir
+    private Path tempDir;
 
     @BeforeEach
     void setUp() {
+        previousDocumentDir = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR");
         request = new MockHttpServletRequest();
         response = new MockHttpServletResponse();
 
@@ -120,6 +134,7 @@ class DocumentPreview2ActionTest extends CarlosUnitTestBase {
         registerMock(SecurityInfoManager.class, mockSecurityInfoManager);
         registerMock(DocumentAttachmentManager.class, mockDocumentAttachmentManager);
         registerMock(FormsManager.class, mockFormsManager);
+        registerMock(OutboundEmailArchiveDao.class, outboundEmailArchiveDao);
 
         // lenient: not every test exercises a privilege check (e.g. unsupported-method returns 400
         // before any hasPrivilege call), so this shared default must not trip strict-stub checks.
@@ -130,6 +145,11 @@ class DocumentPreview2ActionTest extends CarlosUnitTestBase {
 
     @AfterEach
     void tearDown() {
+        if (previousDocumentDir == null) {
+            CarlosProperties.getInstance().remove("DOCUMENT_DIR");
+        } else {
+            CarlosProperties.getInstance().setProperty("DOCUMENT_DIR", previousDocumentDir);
+        }
         if (loggedInInfoMock != null) {
             loggedInInfoMock.close();
         }
@@ -423,6 +443,23 @@ class DocumentPreview2ActionTest extends CarlosUnitTestBase {
                 .contains("errorMessage")
                 .contains("Failed to render form PDF.")
                 .doesNotContain("form failed");
+    }
+
+    @Test
+    @DisplayName("should forbid direct PDF preview of outbound archive backing eDocs")
+    void shouldForbidRenderPdf_whenPathIsOutboundArchiveDocument() throws Exception {
+        Path documentDir = Files.createDirectories(tempDir.resolve("documents"));
+        CarlosProperties.getInstance().setProperty("DOCUMENT_DIR", documentDir.toString());
+        Path archiveFile = Files.writeString(documentDir.resolve("archive.pdf"), "%PDF-1.4");
+        request.setParameter("method", "renderPDF");
+        request.setParameter("pdfPath", archiveFile.toString());
+        when(outboundEmailArchiveDao.existsByFileName("archive.pdf")).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isNull();
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        assertThat(response.getContentAsByteArray()).isEmpty();
     }
 
 }

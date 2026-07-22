@@ -126,6 +126,7 @@ public class ManageDocument2Action extends ActionSupport {
 
     private final DocumentDao documentDao = SpringUtils.getBean(DocumentDao.class);
     private final CtlDocumentDao ctlDocumentDao = SpringUtils.getBean(CtlDocumentDao.class);
+    private final OutboundEmailArchiveDao outboundEmailArchiveDao = SpringUtils.getBean(OutboundEmailArchiveDao.class);
     private final ProviderInboxRoutingDao providerInboxRoutingDAO = SpringUtils.getBean(ProviderInboxRoutingDao.class);
     private final SecurityInfoManager securityInfoManager = SpringUtils.getBean(SecurityInfoManager.class);
 
@@ -802,6 +803,7 @@ public class ManageDocument2Action extends ActionSupport {
         }
 
         String doc_no = request.getParameter("doc_no");
+        assertNotOutboundEmailArchiveDocument(doc_no);
         log.debug("Document No :{}", LogSafe.sanitize(doc_no));
         LoggedInInfo liPage = LoggedInInfo.getLoggedInInfoFromSession(request);
         LogAction.addLog(liPage != null ? liPage.getLoggedInProviderNo() : null, LogConst.READ, LogConst.CON_DOCUMENT, doc_no, request.getRemoteAddr());
@@ -836,6 +838,7 @@ public class ManageDocument2Action extends ActionSupport {
         log.debug("in viewDocPage");
 
         String doc_no = request.getParameter("doc_no");
+        assertNotOutboundEmailArchiveDocument(doc_no);
         String pageNum = request.getParameter("curPage");
         if (pageNum == null) {
             pageNum = "1";
@@ -895,6 +898,7 @@ public class ManageDocument2Action extends ActionSupport {
         }
 
         String doc_no = request.getParameter("doc_no");
+        assertNotOutboundEmailArchiveDocument(doc_no);
         String docdownload = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR");
         // File documentDir = new File(docdownload);
         Document d = documentDao.getDocument(doc_no);
@@ -935,6 +939,7 @@ public class ManageDocument2Action extends ActionSupport {
         }
 
         String doc_no = request.getParameter("doc_no");
+        assertNotOutboundEmailArchiveDocument(doc_no);
         log.debug("Document No :{}", LogSafe.sanitize(doc_no)); // nosemgrep: crlf-injection-logs-deepsemgrep, crlf-injection-logs
         String demoNo = request.getParameter("demoNo");
 
@@ -1011,6 +1016,21 @@ public class ManageDocument2Action extends ActionSupport {
         try (ServletOutputStream outs = response.getOutputStream()) {
             outs.write(contentBytes); // nosemgrep: java.lang.security.audit.xss.no-direct-response-writer.no-direct-response-writer -- binary document download with validated content-type
             outs.flush();
+        }
+    }
+
+    private void assertNotOutboundEmailArchiveDocument(String documentNo) {
+        if (documentNo == null || documentNo.isBlank()) {
+            return;
+        }
+        try {
+            Integer parsedDocumentNo = Integer.valueOf(documentNo);
+            if (outboundEmailArchiveDao.existsByDocumentNo(parsedDocumentNo)) {
+                throw new SecurityException(
+                        "Outbound email archive eDocs must be read through the outbound email archive workflow");
+            }
+        } catch (NumberFormatException e) {
+            // Preserve existing invalid-id behavior in the caller.
         }
     }
 

@@ -3,6 +3,7 @@ package io.github.carlos_emr.carlos.managers;
 import io.github.carlos_emr.CarlosProperties;
 import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
+import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
 import io.github.carlos_emr.carlos.commn.dao.PatientLabRoutingDao;
 import io.github.carlos_emr.carlos.commn.dao.ProviderLabRoutingDao;
 import io.github.carlos_emr.carlos.commn.model.Document;
@@ -21,8 +22,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -38,6 +41,7 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
     private SecurityInfoManager securityInfoManager;
     private DocumentDao documentDao;
     private CtlDocumentDao ctlDocumentDao;
+    private OutboundEmailArchiveDao outboundEmailArchiveDao;
     private PatientLabRoutingDao patientLabRoutingDao;
     private ProviderLabRoutingDao providerLabRoutingDao;
     private LoggedInInfo loggedInInfo;
@@ -50,6 +54,7 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
         securityInfoManager = mock(SecurityInfoManager.class);
         documentDao = mock(DocumentDao.class);
         ctlDocumentDao = mock(CtlDocumentDao.class);
+        outboundEmailArchiveDao = mock(OutboundEmailArchiveDao.class);
         patientLabRoutingDao = mock(PatientLabRoutingDao.class);
         providerLabRoutingDao = mock(ProviderLabRoutingDao.class);
         loggedInInfo = mock(LoggedInInfo.class);
@@ -85,11 +90,25 @@ class DocumentManagerImplFilenameValidationTest extends CarlosUnitTestBase {
         }
     }
 
+    @Test
+    @DisplayName("should reject normal rendering for outbound archive backing eDocs")
+    void shouldRejectRenderDocument_whenDocumentBacksOutboundArchive() {
+        DocumentManagerImpl manager = newDocumentManager();
+        when(securityInfoManager.hasPrivilege(eq(loggedInInfo), eq("_newCasemgmt.documents"), eq(SecurityInfoManager.READ), isNull()))
+                .thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        assertThatThrownBy(() -> manager.renderDocument(loggedInInfo, "321"))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("outbound email archive workflow");
+    }
+
     private DocumentManagerImpl newDocumentManager() {
         DocumentManagerImpl manager = new DocumentManagerImpl();
         injectDependency(manager, "securityInfoManager", securityInfoManager);
         injectDependency(manager, "documentDao", documentDao);
         injectDependency(manager, "ctlDocumentDao", ctlDocumentDao);
+        injectDependency(manager, "outboundEmailArchiveDao", outboundEmailArchiveDao);
         injectDependency(manager, "patientLabRoutingDao", patientLabRoutingDao);
         injectDependency(manager, "providerLabRoutingDao", providerLabRoutingDao);
         return manager;

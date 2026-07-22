@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.apache.logging.log4j.Logger;
 import io.github.carlos_emr.CarlosProperties;
+import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
 import io.github.carlos_emr.carlos.commn.model.EFormData;
 import io.github.carlos_emr.carlos.commn.model.enumerator.DocumentType;
 import io.github.carlos_emr.carlos.documentManager.DocumentAttachmentManager;
@@ -29,6 +30,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.BufferedInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -77,6 +79,7 @@ public class DocumentPreview2Action extends ActionSupport {
     private static final Logger logger = MiscUtils.getLogger();
     private final DocumentAttachmentManager documentAttachmentManager = SpringUtils.getBean(DocumentAttachmentManager.class);
     private final FormsManager formsManager = SpringUtils.getBean(FormsManager.class);
+    private final OutboundEmailArchiveDao outboundEmailArchiveDao = SpringUtils.getBean(OutboundEmailArchiveDao.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -380,6 +383,12 @@ public class DocumentPreview2Action extends ActionSupport {
                 return;
             }
 
+            if (isOutboundEmailArchiveDocumentPath(canonicalPdfPath)) {
+                logger.warn("Blocked direct preview of outbound email archive eDoc: {}", LogSafe.sanitizeObject(canonicalPdfPath.getFileName()));
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                return;
+            }
+
             // Serve the validated PDF file
             response.setContentType("application/pdf");
             try (InputStream inputStream = Files.newInputStream(canonicalPdfPath);
@@ -397,6 +406,27 @@ public class DocumentPreview2Action extends ActionSupport {
             logger.error("Error processing PDF file: {}", LogSafe.sanitize(pdfPathString), e);
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private boolean isOutboundEmailArchiveDocumentPath(Path canonicalPdfPath) {
+        Path fileName = canonicalPdfPath.getFileName();
+        if (fileName == null) {
+            return false;
+        }
+        String documentDirectoryPath = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR", "/var/lib/OscarDocument/");
+        if (documentDirectoryPath == null || documentDirectoryPath.isBlank()) {
+            return false;
+        }
+        File documentDirectory = new File(documentDirectoryPath);
+        if (!documentDirectory.exists()) {
+            return false;
+        }
+        try {
+            PathValidationUtils.validateExistingPath(canonicalPdfPath.toFile(), documentDirectory);
+        } catch (SecurityException e) {
+            return false;
+        }
+        return outboundEmailArchiveDao.existsByFileName(fileName.toString());
     }
 
     /**

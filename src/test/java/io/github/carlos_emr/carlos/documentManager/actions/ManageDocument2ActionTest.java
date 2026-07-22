@@ -8,6 +8,7 @@ import io.github.carlos_emr.carlos.casemgmt.dao.CaseManagementNoteLinkDAO;
 import io.github.carlos_emr.carlos.commn.dao.CtlDocTypeDao;
 import io.github.carlos_emr.carlos.commn.dao.CtlDocumentDao;
 import io.github.carlos_emr.carlos.commn.dao.DocumentDao;
+import io.github.carlos_emr.carlos.commn.dao.OutboundEmailArchiveDao;
 import io.github.carlos_emr.carlos.commn.dao.PatientLabRoutingDao;
 import io.github.carlos_emr.carlos.commn.dao.ProviderInboxRoutingDao;
 import io.github.carlos_emr.carlos.commn.dao.TicklerLinkDao;
@@ -64,6 +65,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,6 +79,9 @@ class ManageDocument2ActionTest extends CarlosUnitTestBase {
 
     @Mock
     private CtlDocumentDao ctlDocumentDao;
+
+    @Mock
+    private OutboundEmailArchiveDao outboundEmailArchiveDao;
 
     @Mock
     private ProviderInboxRoutingDao providerInboxRoutingDao;
@@ -132,6 +137,7 @@ class ManageDocument2ActionTest extends CarlosUnitTestBase {
         previousDocumentDir = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR");
         registerMock(DocumentDao.class, documentDao);
         registerMock(CtlDocumentDao.class, ctlDocumentDao);
+        registerMock(OutboundEmailArchiveDao.class, outboundEmailArchiveDao);
         registerMock(ProviderInboxRoutingDao.class, providerInboxRoutingDao);
         registerMock(PatientLabRoutingDao.class, patientLabRoutingDao);
         registerMock(ProgramManager2.class, programManager);
@@ -221,6 +227,35 @@ class ManageDocument2ActionTest extends CarlosUnitTestBase {
         assertThat(result).isEqualTo(ActionSupport.NONE);
         assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
         assertThat(action.getActionErrors()).isEmpty();
+    }
+
+    @Test
+    void shouldReturnNoneAndSendForbidden_whenDisplayingOutboundArchiveDocument() {
+        request.setParameter("method", "display");
+        request.setParameter("doc_no", "321");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("r"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(documentDao, never()).getDocument("321");
+    }
+
+    @Test
+    void shouldReturnNoneAndSendForbidden_whenRenderingOutboundArchiveDocumentPage() {
+        request.setParameter("method", "showPage");
+        request.setParameter("page", "1");
+        request.setParameter("doc_no", "321");
+        when(securityInfoManager.hasPrivilege(any(), eq("_edoc"), eq("r"), isNull())).thenReturn(true);
+        when(outboundEmailArchiveDao.existsByDocumentNo(321)).thenReturn(true);
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo(ActionSupport.NONE);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(documentDao, never()).getDocument("321");
     }
 
     @Test

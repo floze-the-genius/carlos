@@ -57,6 +57,12 @@ class OutboundEmailArchiveDaoImplUnitTest {
             "SELECT COUNT(archive) FROM OutboundEmailArchive archive "
                     + "WHERE archive.document.documentNo = :documentNo "
                     + "AND archive.deleted = false";
+    private static final String EXISTS_BY_DOCUMENT_NO_JPQL =
+            "SELECT COUNT(archive) FROM OutboundEmailArchive archive "
+                    + "WHERE archive.document.documentNo = :documentNo";
+    private static final String EXISTS_BY_FILE_NAME_JPQL =
+            "SELECT COUNT(archive) FROM OutboundEmailArchive archive "
+                    + "WHERE archive.fileName = :fileName";
 
     private OutboundEmailArchiveDaoImpl dao;
     private EntityManager entityManager;
@@ -161,6 +167,62 @@ class OutboundEmailArchiveDaoImplUnitTest {
     void shouldReturnFalse_whenDocumentNoIsNull() {
         assertThat(dao.existsActiveByDocumentNo(null)).isFalse();
         verify(entityManager, never()).createQuery(EXISTS_ACTIVE_BY_DOCUMENT_NO_JPQL, Long.class);
+    }
+
+    @Test
+    void shouldReturnTrue_whenAnyArchiveExistsForDocumentNo() {
+        when(entityManager.createQuery(EXISTS_BY_DOCUMENT_NO_JPQL, Long.class)).thenReturn(countQuery);
+        when(countQuery.setParameter("documentNo", 321)).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(1L);
+
+        assertThat(dao.existsByDocumentNo(321)).isTrue();
+
+        verify(entityManager).createQuery(EXISTS_BY_DOCUMENT_NO_JPQL, Long.class);
+        verify(countQuery).setParameter("documentNo", 321);
+        verify(countQuery).getSingleResult();
+    }
+
+    @Test
+    void shouldReturnFalse_whenNoArchiveExistsForDocumentNo() {
+        when(entityManager.createQuery(EXISTS_BY_DOCUMENT_NO_JPQL, Long.class)).thenReturn(countQuery);
+        when(countQuery.setParameter("documentNo", 321)).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(0L);
+
+        assertThat(dao.existsByDocumentNo(321)).isFalse();
+    }
+
+    @Test
+    void shouldReturnFalse_whenAnyArchiveDocumentNoIsNull() {
+        assertThat(dao.existsByDocumentNo(null)).isFalse();
+        verify(entityManager, never()).createQuery(EXISTS_BY_DOCUMENT_NO_JPQL, Long.class);
+    }
+
+    @Test
+    void shouldReturnTrue_whenArchiveExistsForFileName() {
+        when(entityManager.createQuery(EXISTS_BY_FILE_NAME_JPQL, Long.class)).thenReturn(countQuery);
+        when(countQuery.setParameter("fileName", "archive.eml")).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(1L);
+
+        assertThat(dao.existsByFileName("archive.eml")).isTrue();
+
+        verify(entityManager).createQuery(EXISTS_BY_FILE_NAME_JPQL, Long.class);
+        verify(countQuery).setParameter("fileName", "archive.eml");
+        verify(countQuery).getSingleResult();
+    }
+
+    @Test
+    void shouldReturnFalse_whenNoArchiveExistsForFileName() {
+        when(entityManager.createQuery(EXISTS_BY_FILE_NAME_JPQL, Long.class)).thenReturn(countQuery);
+        when(countQuery.setParameter("fileName", "document.pdf")).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(0L);
+
+        assertThat(dao.existsByFileName("document.pdf")).isFalse();
+    }
+
+    @Test
+    void shouldReturnFalse_whenArchiveFileNameIsBlank() {
+        assertThat(dao.existsByFileName(" ")).isFalse();
+        verify(entityManager, never()).createQuery(EXISTS_BY_FILE_NAME_JPQL, Long.class);
     }
 
     @Test

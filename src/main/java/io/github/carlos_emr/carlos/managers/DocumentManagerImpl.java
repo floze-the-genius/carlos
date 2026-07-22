@@ -101,6 +101,9 @@ public class DocumentManagerImpl implements DocumentManager {
     private CtlDocumentDao ctlDocumentDao;
 
     @Autowired
+    private OutboundEmailArchiveDao outboundEmailArchiveDao;
+
+    @Autowired
     private NioFileManager nioFileManager;
 
     @Autowired
@@ -394,6 +397,7 @@ public class DocumentManagerImpl implements DocumentManager {
         String path = null;
 
         if (document != null) {
+            assertNotOutboundEmailArchiveDocument(documentId);
             path = getFullPathToDocument(document.getDocfilename());
         }
 
@@ -544,6 +548,7 @@ public class DocumentManagerImpl implements DocumentManager {
             throw new RuntimeException("Access Denied");
         }
 
+        assertNotOutboundEmailArchiveDocument(eDoc);
         return renderDocument(eDoc);
     }
 
@@ -552,8 +557,33 @@ public class DocumentManagerImpl implements DocumentManager {
             throw new RuntimeException("Access Denied");
         }
 
+        assertNotOutboundEmailArchiveDocument(documentId);
         EDoc eDoc = EDocUtil.getEDocFromDocId(String.valueOf(documentId));
         return renderDocument(eDoc);
+    }
+
+    private void assertNotOutboundEmailArchiveDocument(EDoc eDoc) {
+        if (eDoc != null) {
+            assertNotOutboundEmailArchiveDocument(eDoc.getDocId());
+        }
+    }
+
+    private void assertNotOutboundEmailArchiveDocument(String documentId) {
+        if (documentId == null || documentId.isBlank()) {
+            return;
+        }
+        try {
+            assertNotOutboundEmailArchiveDocument(Integer.valueOf(documentId));
+        } catch (NumberFormatException e) {
+            // Preserve existing invalid-id behavior in the caller.
+        }
+    }
+
+    private void assertNotOutboundEmailArchiveDocument(Integer documentId) {
+        if (documentId != null && outboundEmailArchiveDao.existsByDocumentNo(documentId)) {
+            throw new SecurityException(
+                    "Outbound email archive eDocs must be read through the outbound email archive workflow");
+        }
     }
 
     // FindSecBugs PATH_TRAVERSAL_IN: path validated for directory containment via PathValidationUtils before use

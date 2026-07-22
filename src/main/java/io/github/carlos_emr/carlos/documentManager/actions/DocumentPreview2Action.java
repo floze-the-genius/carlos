@@ -465,7 +465,12 @@ public class DocumentPreview2Action extends ActionSupport {
         if (documentDirectoryPath == null || documentDirectoryPath.isBlank()) {
             return false;
         }
-        File documentDirectory = new File(documentDirectoryPath);
+        File documentDirectory;
+        try {
+            documentDirectory = PathValidationUtils.resolveConfiguredDirectory(documentDirectoryPath, "DOCUMENT_DIR");
+        } catch (SecurityException e) {
+            return false;
+        }
         if (!documentDirectory.exists()) {
             return false;
         }

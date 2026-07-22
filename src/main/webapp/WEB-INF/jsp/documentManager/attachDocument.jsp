@@ -37,11 +37,17 @@
 <%@ taglib uri="/WEB-INF/security.tld" prefix="security" %>
 <%
     String roleName$ = (String) session.getAttribute("userrole") + "," + (String) session.getAttribute("user");
+    String attachmentSecurityObject = (String) request.getAttribute("attachmentSecurityObject");
+    if (attachmentSecurityObject == null || attachmentSecurityObject.trim().isEmpty()) {
+        attachmentSecurityObject = "_con";
+    }
+    Object canManageAttachments = request.getAttribute("canManageAttachments");
+    String attachmentSecurityRights = canManageAttachments == null || Boolean.TRUE.equals(canManageAttachments) ? "w" : "r";
     boolean authed = true;
 %>
-<security:oscarSec roleName="<%=roleName$%>" objectName="_con" rights="w" reverse="<%=true%>">
+<security:oscarSec roleName="<%=roleName$%>" objectName="<%=attachmentSecurityObject%>" rights="<%=attachmentSecurityRights%>" reverse="<%=true%>">
     <%authed = false; %>
-    <%response.sendRedirect(request.getContextPath() + "/securityError?type=_con");%>
+    <%response.sendRedirect(request.getContextPath() + "/securityError?type=" + attachmentSecurityObject);%>
 </security:oscarSec>
 <%
     if (!authed) {
@@ -329,7 +335,7 @@
                                              ${carlos:forHtml(eFormDisplayName)} ${carlos:forHtml(eForm.getFormDate())}
                                          </label>
                                          <button class="preview-button" type="button" title="${carlos:forHtmlAttribute(previewAction)}"
-                                                 onclick="getPdf('EFORM', '${eForm.id}', 'method=renderEFormPDF&eFormId=${eForm.id}')">
+                                                 onclick="getPdf('EFORM', '${eForm.id}', 'method=renderEFormPDF&eFormId=${eForm.id}&demographicNo=${demographicNo}')">
                                              ${carlos:forHtmlContent(previewAction)}
                                          </button>
                                      </li>
@@ -363,7 +369,7 @@
                                                 title="${ carlos:forHtmlAttribute(document.description) }"/>
                                         <label for="docNo${document.docId}">${carlos:forHtml(document.description)} ${carlos:forHtml(document.observationDate)}</label>
                                         <button class="preview-button" type="button" title="${carlos:forHtmlAttribute(previewAction)}"
-                                                 onclick="getPdf('DOC', '${document.docId}', 'method=renderEDocPDF&eDocId=${document.docId}')">
+                                                 onclick="getPdf('DOC', '${document.docId}', 'method=renderEDocPDF&eDocId=${document.docId}&demographicNo=${demographicNo}')">
                                             ${carlos:forHtmlContent(previewAction)}
                                         </button>
                                     </li>
@@ -403,7 +409,7 @@
                                             &nbsp;<i class="collapse-arrow" onclick="toggleLabVersionList(this)"></i>&nbsp;
                                         </c:if>
                                         <button class="preview-button" type="button" title="${carlos:forHtmlAttribute(previewAction)}"
-                                                 onclick="getPdf('LAB', '${lab.segmentID}', 'method=renderLabPDF&segmentId=${lab.segmentID}')">
+                                                 onclick="getPdf('LAB', '${lab.segmentID}', 'method=renderLabPDF&segmentId=${lab.segmentID}&demographicNo=${demographicNo}')">
                                             ${carlos:forHtmlContent(previewAction)}
                                         </button>
                                         <ul class="collapsible-content" style="list-style-type: none;padding:0px;">
@@ -427,7 +433,7 @@
                                                                class="lab-date">(${version.value})</label>
                                                     </em>
                                                      <button class="preview-button" type="button" title="${carlos:forHtmlAttribute(previewAction)}"
-                                                             onclick="getPdf('LAB', '${version.key}', 'method=renderLabPDF&segmentId=${version.key}')">
+                                                             onclick="getPdf('LAB', '${version.key}', 'method=renderLabPDF&segmentId=${version.key}&demographicNo=${demographicNo}')">
                                                          ${carlos:forHtmlContent(previewAction)}
                                                      </button>
                                                 </li>
@@ -464,7 +470,7 @@
                                             ${carlos:forHtml(hrm['name'])} ${carlos:forHtml(hrm['report_date'])}
                                         </label>
                                         <button class="preview-button" type="button" title="${carlos:forHtmlAttribute(previewAction)}"
-                                                 onclick="getPdf('HRM', '${hrm.id}', 'method=renderHrmPDF&hrmId=${hrm.id}')">
+                                                 onclick="getPdf('HRM', '${hrm.id}', 'method=renderHrmPDF&hrmId=${hrm.id}&demographicNo=${demographicNo}')">
                                             ${carlos:forHtmlContent(previewAction)}
                                         </button>
                                     </li>
@@ -498,7 +504,7 @@
                                             ${carlos:forHtml(form.formName)} ${carlos:forHtml(form.getEdited())}
                                         </label>
                                         <button class="preview-button" type="button" title="${carlos:forHtmlAttribute(previewAction)}"
-                                                onclick="getPdf('FORM', '${form.formId}', 'method=renderFormPDF&formId=${form.formId}&formName=${form.formName}&demographicNo=${form.getDemoNo()}')">
+                                                onclick="getPdf('FORM', '${form.formId}', 'method=renderFormPDF&formId=${form.formId}&formName=${carlos:forJavaScriptAttribute(e:forUriComponent(form.formName))}&demographicNo=${form.getDemoNo()}')">
                                             ${carlos:forHtmlContent(previewAction)}
                                         </button>
                                     </li>

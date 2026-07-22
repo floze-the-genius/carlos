@@ -345,6 +345,28 @@ class DocumentPreview2ActionTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should expose eForm attachment security context when fetching eForm documents")
+    void shouldExposeEformAttachmentSecurityContext_whenFetchingEformDocuments() {
+        request.setParameter("method", "fetchEFormDocuments");
+        request.setParameter("demographicNo", "123");
+        request.setParameter("fdid", "456");
+
+        when(mockSecurityInfoManager.hasPrivilege(mockLoggedInInfo, "_edoc", SecurityInfoManager.READ, "123")).thenReturn(false);
+        when(mockSecurityInfoManager.hasPrivilege(mockLoggedInInfo, "_hrm", SecurityInfoManager.READ, "123")).thenReturn(false);
+        when(mockSecurityInfoManager.hasPrivilege(mockLoggedInInfo, "_lab", SecurityInfoManager.READ, "123")).thenReturn(false);
+        when(mockSecurityInfoManager.hasPrivilege(mockLoggedInInfo, "_form", SecurityInfoManager.READ, "123")).thenReturn(false);
+        when(mockDocumentAttachmentManager.getAllEFormsExpectFdid(mockLoggedInInfo, 123, 456)).thenReturn(List.of());
+
+        String result = action.execute();
+
+        assertThat(result).isEqualTo("fetchDocuments");
+        assertThat(request.getAttribute("demographicNo")).isEqualTo("123");
+        assertThat(request.getAttribute("attachmentSecurityObject")).isEqualTo("_eform");
+        assertThat(request.getAttribute("canManageAttachments")).isEqualTo(true);
+        verify(mockSecurityInfoManager).hasPrivilege(mockLoggedInInfo, "_eform", SecurityInfoManager.WRITE, "123");
+    }
+
+    @Test
     @DisplayName("should fall back to zero when fetch eform demographic is invalid")
     void shouldFallBackToZero_whenFetchingEformDemographicWithInvalidValue() {
         request.setParameter("method", "fetchEFormDocuments");

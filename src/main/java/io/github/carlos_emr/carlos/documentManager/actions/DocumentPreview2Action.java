@@ -69,6 +69,8 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  * @see PathValidationUtils
  */
 public class DocumentPreview2Action extends ActionSupport {
+    private static final String DOCUMENT_DIR_PROPERTY = "DOCUMENT_DIR";
+
     private static final String FETCH_CONSULT_DOCUMENTS = "fetchConsultDocuments";
     private static final String EDOC_PDF_RENDER_FAILURE_MESSAGE = "Failed to render document PDF.";
     private static final String EFORM_PDF_RENDER_FAILURE_MESSAGE = "Failed to render eForm PDF.";
@@ -89,7 +91,7 @@ public class DocumentPreview2Action extends ActionSupport {
     private final transient EFormDataDao eFormDataDao = SpringUtils.getBean(EFormDataDao.class);
     private final transient PatientLabRoutingDao patientLabRoutingDao = SpringUtils.getBean(PatientLabRoutingDao.class);
     private final transient HRMDocumentToDemographicDao hrmDocumentToDemographicDao = SpringUtils.getBean(HRMDocumentToDemographicDao.class);
-    private final OutboundEmailArchiveDao outboundEmailArchiveDao = SpringUtils.getBean(OutboundEmailArchiveDao.class);
+    private final transient OutboundEmailArchiveDao outboundEmailArchiveDao = SpringUtils.getBean(OutboundEmailArchiveDao.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -396,7 +398,7 @@ public class DocumentPreview2Action extends ActionSupport {
             
             // Define allowed directories based on OSCAR configuration
             String[] allowedBasePaths = {
-                CarlosProperties.getInstance().getProperty("DOCUMENT_DIR", "/var/lib/OscarDocument/"),
+                CarlosProperties.getInstance().getProperty(DOCUMENT_DIR_PROPERTY, "/var/lib/OscarDocument/"),
                 CarlosProperties.getInstance().getProperty("TMP_DIR", "/tmp/"),
                 CarlosProperties.getInstance().getProperty("eform_image", "/var/lib/OscarDocument/eform/images/"),
                 System.getProperty("java.io.tmpdir")
@@ -461,13 +463,13 @@ public class DocumentPreview2Action extends ActionSupport {
         if (fileName == null) {
             return false;
         }
-        String documentDirectoryPath = CarlosProperties.getInstance().getProperty("DOCUMENT_DIR", "/var/lib/OscarDocument/");
+        String documentDirectoryPath = CarlosProperties.getInstance().getProperty(DOCUMENT_DIR_PROPERTY, "/var/lib/OscarDocument/");
         if (documentDirectoryPath == null || documentDirectoryPath.isBlank()) {
             return false;
         }
         File documentDirectory;
         try {
-            documentDirectory = PathValidationUtils.resolveConfiguredDirectory(documentDirectoryPath, "DOCUMENT_DIR");
+            documentDirectory = PathValidationUtils.resolveConfiguredDirectory(documentDirectoryPath, DOCUMENT_DIR_PROPERTY);
         } catch (SecurityException e) {
             return false;
         }

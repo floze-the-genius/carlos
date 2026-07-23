@@ -74,7 +74,7 @@ public class SplitDocument2Action extends ActionSupport {
     HttpServletResponse response = ServletActionContext.getResponse();
 
     private DocumentDao documentDao = SpringUtils.getBean(DocumentDao.class);
-    private OutboundEmailArchiveDao outboundEmailArchiveDao = SpringUtils.getBean(OutboundEmailArchiveDao.class);
+    private transient OutboundEmailArchiveDao outboundEmailArchiveDao = SpringUtils.getBean(OutboundEmailArchiveDao.class);
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Set<PosixFilePermission> OWNER_RW_ONLY = PosixFilePermissions.fromString("rw-------");

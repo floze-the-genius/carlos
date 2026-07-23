@@ -82,8 +82,10 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
     private static final String DOCUMENT_DIR_PROPERTY = "DOCUMENT_DIR";
     private static final String DOCUMENT_DOCTYPE = "email";
     private static final String DOCUMENT_SOURCE = "Outbound Email Archive";
+    private static final String ADMIN_EDOC_DELETE_SECURITY_OBJECT = "_admin.edocdelete";
     private static final String EDOC_SECURITY_OBJECT = "_edoc";
     private static final String CTL_DOCUMENT_MODULE_DEMOGRAPHIC = "demographic";
+    private static final String SOURCE_DOCUMENT_TYPE_DOCUMENT = "DOCUMENT";
     private static final long DEFAULT_MAX_ARCHIVED_ARTIFACT_BYTES = 50L * 1024L * 1024L;
 
     private final DocumentManager documentManager;
@@ -458,7 +460,9 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         if (attachmentBytes != null && attachmentDocument == null) {
             throw new IllegalArgumentException("Persisted attachment document is required when attachment bytes are supplied");
         }
-        validateAttachmentDocumentDemographic(attachmentDocument, demographicNo);
+        String sourceDocumentType = request.getSourceDocumentType();
+        Integer sourceDocumentId = request.getSourceDocumentId();
+        validateAttachmentDocumentDemographic(attachmentDocument, sourceDocumentType, sourceDocumentId, demographicNo);
         String sha256Hash = request.getSha256Hash();
         Long byteSize = request.getByteSize();
         if (attachmentBytes != null) {
@@ -476,20 +480,36 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         attachment.setContentType(truncate(request.getContentType(), 100));
         attachment.setSha256Hash(sha256Hash);
         attachment.setByteSize(byteSize);
-        attachment.setSourceDocumentType(truncate(request.getSourceDocumentType(), 50));
-        attachment.setSourceDocumentId(request.getSourceDocumentId());
+        attachment.setSourceDocumentType(truncate(sourceDocumentType, 50));
+        attachment.setSourceDocumentId(sourceDocumentId);
         attachment.setDocument(attachmentDocument);
         attachment.setLastUpdateUser(providerNo);
         return attachment;
     }
 
-    private void validateAttachmentDocumentDemographic(Document attachmentDocument, Integer demographicNo) {
-        if (attachmentDocument == null) {
-            return;
+    private void validateAttachmentDocumentDemographic(
+            Document attachmentDocument,
+            String sourceDocumentType,
+            Integer sourceDocumentId,
+            Integer demographicNo) {
+        Integer documentNo = null;
+        if (attachmentDocument != null) {
+            documentNo = attachmentDocument.getId();
+            if (documentNo == null) {
+                throw new IllegalArgumentException("Persisted attachment document is required when attachment document metadata is supplied");
+            }
+            if (isSourceDocument(sourceDocumentType) && sourceDocumentId != null && !sourceDocumentId.equals(documentNo)) {
+                throw new IllegalArgumentException("Attachment source document ID must match persisted attachment document");
+            }
+        } else if (isSourceDocument(sourceDocumentType)) {
+            if (sourceDocumentId == null) {
+                throw new IllegalArgumentException("Source document ID is required when attachment source document type is DOCUMENT");
+            }
+            documentNo = sourceDocumentId;
         }
-        Integer documentNo = attachmentDocument.getId();
+
         if (documentNo == null) {
-            throw new IllegalArgumentException("Persisted attachment document is required when attachment document metadata is supplied");
+            return;
         }
 
         List<CtlDocument> ctlDocuments = ctlDocumentDao.findByDocumentNoAndModule(documentNo, CTL_DOCUMENT_MODULE_DEMOGRAPHIC);
@@ -501,6 +521,11 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             }
         }
         throw new SecurityException("attachment document is not linked to outbound email archive demographic");
+    }
+
+    private boolean isSourceDocument(String sourceDocumentType) {
+        return sourceDocumentType != null
+                && asciiEqualsIgnoreCase(sourceDocumentType.trim(), SOURCE_DOCUMENT_TYPE_DOCUMENT);
     }
 
     private String uniqueArchiveFileName(EmailLog emailLog, String contentType) {
@@ -678,10 +703,13 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             throw new IllegalStateException("Outbound email archive demographic is required");
         }
 
-        boolean canDeleteEdoc = securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)
-                || securityInfoManager.hasPrivilege(loggedInInfo, EDOC_SECURITY_OBJECT, SecurityInfoManager.WRITE, null);
+        boolean canDeleteEdoc = securityInfoManager.hasPrivilege(
+                loggedInInfo,
+                ADMIN_EDOC_DELETE_SECURITY_OBJECT,
+                SecurityInfoManager.WRITE,
+                null);
         if (!canDeleteEdoc) {
-            throw new SecurityException("missing required sec object (_admin.edocdelete or _edoc)");
+            throw new SecurityException("missing required sec object (_admin.edocdelete)");
         }
         if (!securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, demographicNo)) {
             throw new SecurityException("not authorized for outbound email archive demographic");

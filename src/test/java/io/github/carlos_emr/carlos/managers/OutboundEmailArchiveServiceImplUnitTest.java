@@ -323,6 +323,34 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
+    @DisplayName("should archive document source attachment metadata when source document belongs to demographic")
+    void shouldArchiveDocumentSourceAttachmentMetadata_whenDocumentBelongsToDemographic() throws Exception {
+        byte[] attachmentBytes = "existing document attachment bytes".getBytes(StandardCharsets.UTF_8);
+        EmailLog emailLog = emailLog();
+        OutboundEmailArchiveDto request = archiveRequest(emailLog);
+        OutboundEmailArchiveAttachmentDto attachmentRequest = new OutboundEmailArchiveAttachmentDto();
+        attachmentRequest.setFileName("existing-document.pdf");
+        attachmentRequest.setContentType("application/pdf");
+        attachmentRequest.setSha256Hash(sha256Hex(attachmentBytes));
+        attachmentRequest.setByteSize((long) attachmentBytes.length);
+        attachmentRequest.setSourceDocumentType("DOCUMENT");
+        attachmentRequest.setSourceDocumentId(777);
+        request.addAttachment(attachmentRequest);
+
+        when(ctlDocumentDao.findByDocumentNoAndModule(777, "demographic")).thenReturn(List.of(ctlDocument(123, 777)));
+        when(documentManager.createDocument(eq(loggedInInfo), any(Document.class), eq(123), eq(PROVIDER_NO), eq(RFC822_BYTES)))
+                .thenReturn(savedDocument());
+
+        OutboundEmailArchive archive = service.archive(loggedInInfo, request);
+
+        assertThat(archive.getAttachments()).hasSize(1);
+        OutboundEmailArchiveAttachment attachment = archive.getAttachments().get(0);
+        assertThat(attachment.getSourceDocumentType()).isEqualTo("DOCUMENT");
+        assertThat(attachment.getSourceDocumentId()).isEqualTo(777);
+        assertThat(attachment.getDocument()).isNull();
+    }
+
+    @Test
     @DisplayName("should reject attachment document from a different demographic before storing the eDoc")
     void shouldRejectAttachmentDocumentFromDifferentDemographic_beforeStoringEdoc() {
         byte[] attachmentBytes = "encrypted pdf bytes".getBytes(StandardCharsets.UTF_8);
@@ -333,6 +361,28 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
         attachmentRequest.setContentType("application/pdf");
         attachmentRequest.setArtifactBytes(attachmentBytes);
         attachmentRequest.setDocument(attachmentDocument());
+        request.addAttachment(attachmentRequest);
+        when(ctlDocumentDao.findByDocumentNoAndModule(777, "demographic")).thenReturn(List.of(ctlDocument(456, 777)));
+
+        assertThatThrownBy(() -> service.archive(loggedInInfo, request))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("attachment document");
+        verifyNoInteractions(documentManager);
+    }
+
+    @Test
+    @DisplayName("should reject document source attachment metadata from a different demographic before storing the eDoc")
+    void shouldRejectDocumentSourceAttachmentMetadataFromDifferentDemographic_beforeStoringEdoc() {
+        byte[] attachmentBytes = "existing document attachment bytes".getBytes(StandardCharsets.UTF_8);
+        EmailLog emailLog = emailLog();
+        OutboundEmailArchiveDto request = archiveRequest(emailLog);
+        OutboundEmailArchiveAttachmentDto attachmentRequest = new OutboundEmailArchiveAttachmentDto();
+        attachmentRequest.setFileName("existing-document.pdf");
+        attachmentRequest.setContentType("application/pdf");
+        attachmentRequest.setSha256Hash(sha256Hex(attachmentBytes));
+        attachmentRequest.setByteSize((long) attachmentBytes.length);
+        attachmentRequest.setSourceDocumentType("DOCUMENT");
+        attachmentRequest.setSourceDocumentId(777);
         request.addAttachment(attachmentRequest);
         when(ctlDocumentDao.findByDocumentNoAndModule(777, "demographic")).thenReturn(List.of(ctlDocument(456, 777)));
 
@@ -712,12 +762,12 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     @Test
-    @DisplayName("should reject controlled deletion without eDoc delete authority")
-    void shouldRejectDeletion_whenCallerLacksEdocDeleteAuthority() {
+    @DisplayName("should reject controlled deletion with only eDoc write authority")
+    void shouldRejectDeletion_whenCallerOnlyHasEdocWriteAuthority() {
         OutboundEmailArchive archive = activeArchive();
         when(outboundEmailArchiveDao.findForUpdate(888)).thenReturn(archive);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)).thenReturn(false);
-        when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)).thenReturn(false);
+        when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)).thenReturn(true);
 
         assertThatThrownBy(() -> service.recordControlledDeletion(loggedInInfo, 888, "cleanup"))
                 .isInstanceOf(SecurityException.class)
@@ -874,7 +924,7 @@ class OutboundEmailArchiveServiceImplUnitTest extends CarlosUnitTestBase {
     }
 
     private void allowControlledDeletion() {
-        when(securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)).thenReturn(false);
+        when(securityInfoManager.hasPrivilege(loggedInInfo, "_admin.edocdelete", SecurityInfoManager.WRITE, null)).thenReturn(true);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.WRITE, null)).thenReturn(true);
         when(securityInfoManager.hasPrivilege(loggedInInfo, "_edoc", SecurityInfoManager.READ, null)).thenReturn(true);
         when(securityInfoManager.isAllowedAccessToPatientRecord(loggedInInfo, 123)).thenReturn(true);

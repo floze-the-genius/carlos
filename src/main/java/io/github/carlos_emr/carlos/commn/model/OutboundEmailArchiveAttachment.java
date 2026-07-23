@@ -28,6 +28,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreRemove;
 import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
@@ -94,5 +95,14 @@ public class OutboundEmailArchiveAttachment extends OutboundEmailArchiveArtifact
         if (createdAt == null) {
             createdAt = new Date();
         }
+    }
+
+    /**
+     * Blocks physical deletion so attachment metadata remains with the parent archive audit record.
+     */
+    @PreRemove
+    protected void preRemove() {
+        throw new UnsupportedOperationException(
+                "Outbound email archive attachments must be retained with their parent archive");
     }
 }

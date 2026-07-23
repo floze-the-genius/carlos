@@ -29,7 +29,7 @@
 
 <%--
 mfa_otp_handler.jsp
-
+  
 This JSP is a fragment that is pulled in via <jsp:include> from mfa_handler.jsp (inside card-body) and from mfa_registration.jsp
   It provides the field to input the MFA key
   and the submit button
@@ -54,12 +54,12 @@ This JSP is a fragment that is pulled in via <jsp:include> from mfa_handler.jsp 
       /* private consts */
       --_otp-bgsz: calc(var(--otp-ls) + 1ch);
       --_otp-digit: 0;
-
+    
       all: unset;
-      background:   linear-gradient(90deg,
+      background:   linear-gradient(90deg, 
         var(--otp-bg, #BBB) calc(var(--otp-gap) * var(--otp-ls)),
         transparent 0),
-        linear-gradient(90deg,
+        linear-gradient(90deg, 
         var(--otp-bg, #EEE) calc(var(--otp-gap) * var(--otp-ls)),
         transparent 0
       );
@@ -124,3 +124,4 @@ This JSP is a fragment that is pulled in via <jsp:include> from mfa_handler.jsp 
     const input = document.querySelector('[autocomplete=one-time-code]');
     input.addEventListener('input', () => input.style.setProperty('--_otp-digit', input.selectionStart));
   </script>
+

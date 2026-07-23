@@ -33,10 +33,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class OutboundEmailArchiveAttachmentUnitTest {
 
     @Test
-    void shouldRejectPhysicalRemoval() {
+    void shouldRejectMutation() {
         OutboundEmailArchiveAttachment attachment = new OutboundEmailArchiveAttachment();
 
-        assertThatThrownBy(attachment::preRemove)
+        assertThatThrownBy(attachment::preventMutation)
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("retained with their parent archive");
     }

@@ -292,8 +292,14 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
         String auditDemographicNo = demographicNo(archive);
 
         Path archivePath = resolveArchivedArtifactPath(document.getDocfilename());
-        byte[] artifactBytes = readArchivedArtifactBytes(archivePath, expectedByteSize);
-        validateArchiveHash(expectedSha256Hash, artifactBytes);
+        byte[] artifactBytes;
+        try {
+            artifactBytes = readArchivedArtifactBytes(archivePath, expectedByteSize);
+            validateArchiveHash(expectedSha256Hash, artifactBytes);
+        } catch (IOException e) {
+            auditArtifactReadIntegrityFailure(loggedInInfo, archive, document, e);
+            throw e;
+        }
         registerAfterCommitLog(() -> LogAction.addLog(loggedInInfo,
                 "OutboundEmailArchiveService.readArchivedArtifact",
                 AUDIT_ARCHIVE_LABEL,
@@ -793,6 +799,35 @@ public class OutboundEmailArchiveServiceImpl implements OutboundEmailArchiveServ
             throw new IOException("Archived artifact exceeds maximum read size of "
                     + maxArchivedArtifactBytes + " bytes");
         }
+    }
+
+    /**
+     * Records a size/hash integrity failure on a stored archive artifact as a security event.
+     *
+     * <p>A mismatch between the on-disk artifact and the persisted archive metadata can indicate
+     * tampering or storage corruption of retained PHI, so it must leave an audit trail rather than
+     * failing silently. The enclosing transaction is {@code noRollbackFor = IOException.class}, so
+     * this audit row commits alongside the aborted read. Every value logged here is either an
+     * internal surrogate identifier ({@code archiveId}/{@code documentNo}) or a fixed, non-PHI
+     * failure constant — no user input or clinical content is included.
+     */
+    private void auditArtifactReadIntegrityFailure(
+            LoggedInInfo loggedInInfo,
+            OutboundEmailArchive archive,
+            Document document,
+            IOException failure) {
+        MiscUtils.getLogger().warn(
+                "Outbound email archive artifact integrity failure archiveId={}: {}",
+                archive.getId(),
+                failure.getMessage());
+        LogAction.addLog(loggedInInfo,
+                "OutboundEmailArchiveService.readArchivedArtifact.integrityFailure",
+                AUDIT_ARCHIVE_LABEL,
+                AUDIT_ARCHIVE_ID_PREFIX + archive.getId()
+                        + AUDIT_DOCUMENT_NO_PREFIX + (document != null ? document.getId() : "")
+                        + " reason=" + failure.getMessage(),
+                demographicNo(archive),
+                "");
     }
 
     private void validateArchiveHash(String expectedSha256Hash, byte[] artifactBytes) throws IOException {
